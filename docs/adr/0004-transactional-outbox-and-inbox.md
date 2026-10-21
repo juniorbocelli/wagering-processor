@@ -3,7 +3,8 @@
 - **Status:** Aceita
 - **Data:** 2026-10-20
 - **Revisão:** 2026-10-20 — outbox com ordem por wallet (claim da cabeça + lease), preservação de ordem do grupo FIFO no consumidor e erro desconhecido como transitório, após análise comparativa com implementação de referência
-- **Relacionados:** ADR-002, ADR-003, ADR-005
+- **Revisão:** 2026-10-21 — envio explícito à DLQ FIFO com `MessageGroupId`/`MessageDeduplicationId` independentes do corpo; códigos de erro conforme ADR-007 (antes de qualquer código)
+- **Relacionados:** ADR-002, ADR-003, ADR-005, ADR-007
 - **Edital:** §3, §5.3, §5.4, §6.5, §7.1, §10, §11, §12, §13 (Integração; Concorrência 5–8), §14 (Mensageria e falhas — 15 pts; eliminatória "publicação de evento antes do commit")
 
 ---
@@ -84,6 +85,23 @@ CREATE TABLE inbox_messages (
 **Erro desconhecido é transitório, por princípio.** Na dúvida, é mais seguro tentar de novo
 (e deixar a redrive policy levar à DLQ após 5 recebimentos) do que descartar uma
 transação financeira. Só é permanente o que foi **explicitamente** classificado como tal.
+
+**Envio explícito à DLQ FIFO.** Em fila FIFO, `SendMessage` exige `MessageGroupId` e, sem
+*content-based deduplication*, também `MessageDeduplicationId`. Como o corpo pode ser
+justamente o que está inválido, nenhum dos dois é extraído do payload:
+
+| Parâmetro | Origem |
+|---|---|
+| `MessageGroupId` | o mesmo da mensagem recebida (atributo de sistema, pedido com `MessageSystemAttributeNames: ['MessageGroupId', 'ApproximateReceiveCount']`); fallback `dlq-unparseable` se ausente |
+| `MessageDeduplicationId` | `MessageId` original do SQS (reenvio à DLQ após crash é deduplicado na janela de 5 min) |
+| `MessageBody` | corpo original, byte a byte |
+| `MessageAttributes` | `errorCode` (ADR-007), `errorMessage` (truncado), `sourceMessageId`, `receiveCount`, `failedAt` |
+
+O `DeleteMessage` só ocorre **depois** do envio à DLQ confirmado. Se o envio falhar, a
+mensagem **não** é apagada: o erro é tratado como transitório e a redrive policy
+(`maxReceiveCount = 5`) a leva à DLQ pelo caminho nativo. Crash entre o envio e o
+`DeleteMessage` gera no máximo uma duplicata na DLQ, barrada pelo `MessageDeduplicationId`
+dentro da janela.
 
 `MessageGroupId = walletId` reduz contenção (otimização, §8). Trade-off aceito: uma
 mensagem em retry bloqueia o seu grupo (*head-of-line*), mas apenas daquela wallet.

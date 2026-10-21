@@ -82,6 +82,7 @@ infrastructure (MikroORM, SQS, logs, métricas, auth adapters) ─┤──► a
 | [ADR-004](docs/adr/0004-transactional-outbox-and-inbox.md) | Transactional Outbox + Inbox numa única transação SQL; publicação ordenada por wallet (claim da cabeça + lease, `SKIP LOCKED`) | Aceita | Mensageria e falhas |
 | [ADR-005](docs/adr/0005-mikro-orm.md) | MikroORM 7.x: `EntitySchema`, mappers para `rehydrate`, `fork` + `transactional`, migrations SQL reversíveis em lista explícita | Aceita | Modelagem e arquitetura |
 | [ADR-006](docs/adr/0006-decoupled-authentication.md) | Autenticação desacoplada via `ProviderIdentityPort` + guard no-op (desenho alvo: Keycloak client credentials) | Aceita | — (§2) |
+| [ADR-007](docs/adr/0007-failure-code-taxonomy.md) | Taxonomia fechada de `failureCode` (com `CHECK` no banco) separada dos códigos de erro de contrato | Aceita | Correção financeira, Idempotência, Mensageria |
 | [ADR-011](docs/adr/0011-bounded-retention-inbox-outbox.md) | Retenção limitada de inbox (7 d) e outbox publicada (72 h) em lotes com `SKIP LOCKED`; pendentes nunca apagados | Aceita | Mensageria e falhas |
 | [ADR-012](docs/adr/0012-periodic-reconciliation-detect-not-correct.md) | Reconciliação periódica de todas as wallets em snapshot `REPEATABLE READ`, uma instância por vez (advisory lock); detecta e não corrige | Aceita | Correção financeira, Observabilidade |
 | [ADR-013](docs/adr/0013-spec-first-openapi-contract.md) | Contrato OpenAPI 3.1 *spec-first* com teste de paridade rotas × spec | **Proposta** | Documentação |
@@ -89,18 +90,17 @@ infrastructure (MikroORM, SQS, logs, métricas, auth adapters) ─┤──► a
 **Backlog de ADRs** (números reservados; serão registrados conforme a implementação
 avançar):
 
-| # | Tema |
-|---|---|
-| ADR-007 | Taxonomia de `failureCode` (formaliza a §6 deste documento) |
-| ADR-008 | Política de referências fora de ordem: backoff, limite e TTL |
-| ADR-009 | Observabilidade: logs estruturados, catálogo de métricas, health checks |
-| ADR-010 | Estratégia de testes multi-processo e injeção de falhas |
+| # | Tema | Quando |
+|---|---|---|
+| ADR-008 | Política de referências fora de ordem: backoff, limite e TTL | Passo 4 |
+| ADR-009 | Observabilidade: logs estruturados, catálogo de métricas, health checks | Passo 4 |
+| ADR-010 | Estratégia de testes multi-processo e injeção de falhas | Passo 6 |
 
 Template para novos registros: [`docs/adr/template.md`](docs/adr/template.md).
 ADRs aceitos não são editados no mérito; uma mudança de decisão gera um novo ADR que
 **substitui** o anterior (status `Substituída por ADR-NNN`). As revisões de 2026-10-20
-nos ADRs 002–005 foram feitas **antes de qualquer código** e estão registradas no
-cabeçalho de cada um.
+nos ADRs 002–005 e de 2026-10-21 nos ADRs 002, 004 e 012 foram feitas **antes de qualquer
+código** e estão registradas no cabeçalho de cada um.
 
 ## 4. Invariantes e onde são garantidas
 
@@ -114,14 +114,15 @@ rápida, mensagem clara) e schema (garantia final, §5.9).
 | Uma wallet por `playerId + currency` (§6.2) | — | `UNIQUE (player_id, currency)` | 002 |
 | Saldo nunca negativo (§3, §6.2) | `Wallet.debit` rejeita | `CHECK (balance_amount >= 0)`, `CHECK (balance_after >= 0)` | 002 |
 | Sem lost update (§5.7, §6.2) | — | `FOR UPDATE`; `UNIQUE (wallet_id, wallet_version)` no ledger; `UPDATE … WHERE version = ?` | 002 |
-| `version` inicia em 1 e só muda com o saldo (§6.2) | `Wallet` incrementa apenas em `debit`/`credit` | `CHECK (version >= 1)`; trigger diferido saldo ↔ ledger | 002 |
-| Toda alteração de saldo tem lançamento e vice-versa (§6.2) | `debit`/`credit` retornam o `WalletLedgerEntry` | *constraint trigger* `DEFERRABLE INITIALLY DEFERRED` | 002 |
+| `version` inicia em 1 e só muda com o saldo (§6.2) | `Wallet` incrementa apenas em `debit`/`credit` | `CHECK (version >= 1)`; trigger diferido exige `version = 1` no `INSERT` e `+1` exato quando o saldo muda; `version = coalesce(último wallet_version, 1)` | 002 |
+| Toda alteração de saldo tem lançamento e vice-versa (§6.2) | `debit`/`credit` retornam o `WalletLedgerEntry` | *constraint trigger* `AFTER INSERT OR UPDATE`, `DEFERRABLE INITIALLY DEFERRED` (cobre a abertura com saldo inicial) | 002 |
 | Lançamento aritmeticamente correto (§6.4) | `WalletLedgerEntry.create` valida `isBalanced()` | `CHECK (balance_after = balance_before ± amount)` | 002 |
 | Corrente do ledger contínua (sem buracos nem saldo anterior forjado) | `Wallet` cria o lançamento a partir do próprio saldo | trigger `BEFORE INSERT ledger_assert_chain`: `balance_before` = `balance_after` anterior e `wallet_version` = anterior + 1 | 002 |
-| Ledger imutável (§5.5, §6.4) | classe sem setters nem transições | trigger `BEFORE UPDATE OR DELETE` → `RAISE`; `REVOKE UPDATE, DELETE, TRUNCATE` | 002 |
+| Ledger imutável (§5.5, §6.4) | classe sem setters nem transições | trigger `BEFORE UPDATE OR DELETE` → `RAISE`; `REVOKE UPDATE, DELETE, TRUNCATE` do papel `wagering_app` (app nunca é dona das tabelas nem superusuário) | 002 |
 | ≤ 1 lançamento por transação/wallet (§6.4) | — | `UNIQUE (transaction_id)` | 002 |
 | Idempotency key única; mesma key + payload diferente = conflito (§6.3, §9) | `matchesPayload(hash)` | `UNIQUE (provider_id, idempotency_key)`, `UNIQUE (provider_id, external_transaction_id)` | 003 |
-| Estados terminais não mudam (§6.3) | transições lançam `InvalidTransactionStateError` | trigger `BEFORE UPDATE` bloqueia mudança a partir de terminal | 003 |
+| Estados terminais não mudam (§6.3) | transições lançam `InvalidTransactionStateError` | trigger `BEFORE UPDATE`: colunas de identidade/payload sempre imutáveis; colunas de resultado mutáveis só a partir de `PENDING_REFERENCE` | 003 |
+| `failureCode` pertence ao catálogo (§6.3) | união literal `FailureCode` | `CHECK (failure_code IN (...))` | 007 |
 | REFUND/ROLLBACK exigem referência (§7.1) | `requiresReference()` em `create` | `CHECK (kind NOT IN ('REFUND','ROLLBACK') OR reference_external_transaction_id IS NOT NULL)` | 003 |
 | Referência revertida no máximo uma vez (§7.4) | validação no use case | índice único parcial `(reference_transaction_id) WHERE status='PROCESSED' AND kind IN ('REFUND','ROLLBACK')` | 002/003 |
 | `OPENING` é interno (§6.3) | DTO/consumer rejeitam | `UNIQUE (wallet_id) WHERE kind='OPENING'` | — |
@@ -158,6 +159,11 @@ O edital pede que interpretações adicionais sejam documentadas (§7):
    memória e transita antes do commit para `PROCESSED`, `REJECTED` ou `PENDING_REFERENCE`.
 9. **`FAILED`** é reservado a erro permanente não-negocial detectado sobre uma transação
    já persistida (ex.: falha irrecuperável no reprocessamento de `PENDING_REFERENCE`).
+10. **`playerId` é opaco.** O edital usa UUIDs nos exemplos, mas não exige o formato; o
+    identificador do provedor é aceito como string de 1 a 128 caracteres
+    (`VARCHAR(128)`), como `roundId` e `gameId`.
+11. **Wallet aberta com saldo zero** não gera `OPENING` nem lançamento: nasce com
+    `version = 1` e seu primeiro lançamento tem `wallet_version = 2` (ADR-002).
 
 ### Máquina de estados de `WagerTransaction`
 
@@ -176,10 +182,10 @@ stateDiagram-v2
   FAILED --> [*]
 ```
 
-## 6. Taxonomia preliminar de `failureCode`
+## 6. Taxonomia de `failureCode`
 
-Formalizada no futuro ADR-007. Códigos estáveis, `SCREAMING_SNAKE_CASE`, legíveis por
-máquina.
+Formalizada no [ADR-007](docs/adr/0007-failure-code-taxonomy.md), que é a fonte
+canônica (catálogo, ordem de avaliação, `CHECK` no banco e regra de evolução). Resumo:
 
 | Código | Quando | Provedor deve |
 |---|---|---|
@@ -193,10 +199,12 @@ máquina.
 | `REFERENCE_NOT_PROCESSED` | referência existe mas não está `PROCESSED` | investigar |
 | `REFERENCE_ALREADY_REVERSED` | referência já revertida | não reenviar |
 | `AMOUNT_MISMATCH` | valor ≠ valor da referência (§7.5) | corrigir payload |
+| `PROCESSING_FAILED` | erro permanente não-negocial (status `FAILED`) | escalar operacionalmente |
 
-Erros de contrato (não persistidos) usam `code` na resposta HTTP: `VALIDATION_ERROR`,
-`WALLET_NOT_FOUND`, `IDEMPOTENCY_KEY_REUSED`, `EXTERNAL_TRANSACTION_ID_REUSED`,
-`TRANSIENT_FAILURE` (ver ADR-003 §5).
+Erros de contrato (não persistidos) usam `code` na resposta HTTP e no atributo
+`errorCode` da DLQ: `VALIDATION_ERROR`, `WALLET_NOT_FOUND`, `WALLET_ALREADY_EXISTS`,
+`IDEMPOTENCY_KEY_REUSED`, `EXTERNAL_TRANSACTION_ID_REUSED`, `INBOX_PAYLOAD_MISMATCH`,
+`TRANSIENT_FAILURE` (ADR-007 §3, ADR-003 §5).
 
 ## 7. Rastreabilidade com a matriz de avaliação (§14)
 

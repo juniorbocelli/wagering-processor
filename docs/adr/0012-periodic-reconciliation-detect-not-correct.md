@@ -2,6 +2,7 @@
 
 - **Status:** Aceita
 - **Data:** 2026-10-20
+- **Revisão:** 2026-10-21 — regra de versão corrigida para wallets abertas com saldo zero (antes de qualquer código)
 - **Relacionados:** ADR-002, ADR-004
 - **Edital:** §9 (Reconciliação), §12, §13 (invariante final), §14 (Correção financeira — 20 pts; Observabilidade — 5 pts)
 
@@ -28,8 +29,9 @@ Forças:
 
 - Um worker reconcilia **todas** as wallets a cada `RECONCILIATION_INTERVAL_MS`
   (padrão 5 min), usando o mesmo cálculo do endpoint:
-  `Σ CREDIT − Σ DEBIT`, continuidade da corrente (`LAG(balance_after)`) e
-  `wallet.version = último wallet_version`.
+  `Σ CREDIT − Σ DEBIT`, continuidade da corrente (`LAG(balance_after)`),
+  `wallet.version = coalesce(último wallet_version, 1)` e, com ledger vazio, saldo = 0
+  (wallet aberta com saldo zero não tem lançamento — ADR-002).
 - A varredura roda numa **única transação `REPEATABLE READ READ ONLY`**, em lotes por
   keyset (`WHERE id > $último ORDER BY id LIMIT n`): todos os lotes enxergam o mesmo
   snapshot e nenhuma escrita é bloqueada.

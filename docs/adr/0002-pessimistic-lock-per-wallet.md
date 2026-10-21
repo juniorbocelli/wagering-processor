@@ -3,6 +3,7 @@
 - **Status:** Aceita
 - **Data:** 2026-10-20
 - **Revisão:** 2026-10-20 — incorporada a verificação de corrente do ledger e FKs diferíveis após análise comparativa com implementação de referência (antes de qualquer código)
+- **Revisão:** 2026-10-21 — trigger saldo ↔ ledger passa a cobrir `INSERT` (abertura com saldo) e exige `version` + 1; `statement_timeout` restrito a `SET LOCAL`; papéis de banco separados (antes de qualquer código)
 - **Relacionados:** ADR-001, ADR-003, ADR-004, ADR-005
 - **Edital:** §3, §5.6, §5.7, §5.8, §5.9, §6.2, §8, §13 (Concorrência 1–4), §14 (Concorrência — 20 pts; eliminatórias "saldo negativo por race", "débito/crédito duplicado", "correta somente com uma instância")
 
@@ -82,7 +83,7 @@ invariante não é violada — a transação falha em vez de corromper dados:
 | Sem lost update na cadeia do ledger | `wallet_ledger_entries.wallet_version` + `UNIQUE (wallet_id, wallet_version)`: duas transações que partissem da mesma versão colidiriam |
 | **Continuidade da corrente** | trigger `BEFORE INSERT ledger_assert_chain`: lê o último lançamento da wallet (via índice `(wallet_id, wallet_version)`) e exige `NEW.wallet_version = último + 1` **e** `NEW.balance_before = último.balance_after`; sem lançamento anterior, exige `balance_before = 0` e `wallet_version ∈ {1, 2}` (wallet aberta com ou sem saldo inicial) |
 | Aritmética do lançamento | `CHECK` de `balance_after = balance_before ± amount` conforme `direction` |
-| Saldo ↔ ledger | *constraint trigger* `DEFERRABLE INITIALLY DEFERRED` em `wallets`: todo `UPDATE` de saldo exige, no commit, um lançamento com `wallet_version = NEW.version` e `balance_after = NEW.balance_amount` |
+| Saldo ↔ ledger | *constraint trigger* `AFTER INSERT OR UPDATE ON wallets`, `DEFERRABLE INITIALLY DEFERRED`. **INSERT:** `version = 1`; se `balance_amount > 0`, exige no commit o lançamento `wallet_version = 1` com `balance_after = balance_amount`. **UPDATE:** se o saldo mudou, exige `NEW.version = OLD.version + 1` e o lançamento `wallet_version = NEW.version` com `balance_after = NEW.balance_amount`; se não mudou, exige `NEW.version = OLD.version` |
 | Atualização condicionada | `UPDATE wallets SET ..., version = version + 1 WHERE id = $1 AND version = $2` com verificação de *affected rows = 1* |
 | No máximo um lançamento por transação | `UNIQUE (transaction_id)` no ledger |
 
@@ -97,12 +98,32 @@ Todas as FKs são `DEFERRABLE INITIALLY DEFERRED`, para que o flush do Unit of W
 `wager_transactions.reference_transaction_id`. Constraints `UNIQUE` permanecem **não**
 diferíveis (são alvo de `ON CONFLICT` e devem falhar no statement).
 
+**Semântica de `version` × ledger.** Uma wallet aberta com saldo zero nasce com
+`version = 1` e **sem** lançamento; seu primeiro lançamento terá `wallet_version = 2`.
+Aberta com saldo, o lançamento `OPENING` tem `wallet_version = 1`. Em ambos os casos vale
+`wallet.version = coalesce(último wallet_version, 1)` e, com ledger vazio, saldo = 0 —
+é essa a regra usada pela reconciliação (ADR-012) e pelos testes. Qualquer sequência de
+lançamentos continua obrigada a respeitar a corrente (trigger de `INSERT` no ledger) e a
+terminar no saldo materializado (trigger diferido), portanto `saldo = Σ ledger` vale nos
+dois casos.
+
+**Papéis de banco.** Triggers e `REVOKE` só protegem se a aplicação **não** for dona das
+tabelas nem superusuário. Dois papéis:
+
+| Papel | Uso | Privilégios |
+|---|---|---|
+| `wagering_owner` | migrations (Migrator, task avulsa) | dono do schema e das tabelas |
+| `wagering_app` | API, consumer e workers | `SELECT, INSERT` em todas as tabelas; `UPDATE` em `wallets`, `wager_transactions`, `outbox_messages`; `DELETE` só em `inbox_messages`/`outbox_messages` (retenção, ADR-011); **sem** `UPDATE/DELETE/TRUNCATE` no ledger e sem DDL |
+
+O script de inicialização do Postgres no Compose cria os dois papéis; na AWS (RDS), a
+mesma separação vem do provisionamento.
+
 ### 3. Timeouts e proteção operacional
 
 | Parâmetro | Valor | Efeito |
 |---|---|---|
 | `lock_timeout` (`SET LOCAL`) | 3 s | Espera máxima pelo lock da wallet → erro `55P03` mapeado como **transitório** (HTTP 503 + `Retry-After`; SQS retry) |
-| `statement_timeout` | 5 s | Corta queries patológicas |
+| `statement_timeout` (`SET LOCAL`) | 5 s | Corta queries patológicas **apenas nas transações financeiras**; não é configurado no servidor, para não afetar migrations nem a varredura de reconciliação (ADR-012) |
 | `idle_in_transaction_session_timeout` | 10 s | Libera locks de um processo **travado** (não morto) que abriu transação e parou |
 | Retry interno do use case | até 3×, backoff com jitter | Apenas para `40P01` (deadlock) e `40001` (serialização) — esperados como raríssimos |
 
