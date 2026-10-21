@@ -1,0 +1,75 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: wagering
+    # Sem statement_timeout global: é aplicado com SET LOCAL nas transações
+    # financeiras (ADR-002 §3), para não afetar migrations nem reconciliação.
+    command:
+      - postgres
+      - -c
+      - max_connections=100
+      - -c
+      - idle_in_transaction_session_timeout=10s
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d wagering"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  localstack:
+    image: localstack/localstack:4.4
+    environment:
+      SERVICES: sqs
+      AWS_DEFAULT_REGION: us-east-1
+    ports:
+      - "${LOCALSTACK_PORT:-4566}:4566"
+    volumes:
+      - ./docker/localstack/init/ready.d:/etc/localstack/init/ready.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:4566/_localstack/health | grep -q '\"sqs\": \"running\"\\|\"sqs\": \"available\"' && awslocal sqs list-queues | grep -q wallet-events.fifo"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+
+  # Perfil `app`: dependem do código das etapas seguintes (migrations e servidor).
+  migrate:
+    profiles: ["app"]
+    build: .
+    command: ["bun", "run", "migration:up"]
+    environment:
+      DATABASE_URL: postgres://wagering_owner:wagering_owner@postgres:5432/wagering
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  app:
+    profiles: ["app"]
+    build: .
+    environment:
+      DATABASE_URL: postgres://wagering_app:wagering_app@postgres:5432/wagering
+      AWS_ENDPOINT_URL: http://localstack:4566
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      PORT: "3000"
+    # Sem host port fixo para permitir `docker compose up --scale app=3`.
+    expose:
+      - "3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  pgdata:

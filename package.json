@@ -1,0 +1,47 @@
+{
+  "name": "wagering-processor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "bun@1.4.3",
+  "engines": {
+    "bun": "1.4.3"
+  },
+  "scripts": {
+    "dev": "bun --watch src/main.ts",
+    "start": "bun src/main.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . && bun scripts/check-money.ts",
+    "check:money": "bun scripts/check-money.ts",
+    "infra:up": "docker compose up -d --wait postgres localstack",
+    "infra:down": "docker compose down -v",
+    "test": "bun test test/unit",
+    "test:unit": "bun test test/unit",
+    "test:integration": "bun test test/integration",
+    "test:concurrency": "bun test test/concurrency",
+    "test:load": "bun test/load/run.ts",
+    "test:all": "bun run test:unit && bun run test:integration && bun run test:concurrency"
+  },
+  "dependencies": {
+    "@aws-sdk/client-sqs": "3",
+    "@mikro-orm/core": "7",
+    "@mikro-orm/migrations": "7",
+    "@mikro-orm/postgresql": "7",
+    "@nestjs/common": "12",
+    "@nestjs/core": "12",
+    "@nestjs/platform-express": "12",
+    "pino": "^10.4.0",
+    "prom-client": "15",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "zod": "4"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/bun": "^1.4.3",
+    "eslint": "^10.13.0",
+    "fast-check": "^4.10.2",
+    "typescript": "6",
+    "typescript-eslint": "^8.72.0"
+  }
+}

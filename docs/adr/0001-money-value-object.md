@@ -103,8 +103,16 @@ lista como inválido "mais de 2 casas decimais" — não menos.
   esperando `400`, receberá `201` com `"25.50"`. Aceitamos o risco por alinhamento ao
   mercado; a mudança para estrito é local (uma regex) e coberta por testes.
 
-Moeda: `^[A-Z]{3}$` **e** pertencente a uma allowlist configurável
-(`SUPPORTED_CURRENCIES`, default `BRL,USD,EUR`). Todas operam com escala 2.
+Moeda: `Money` valida o formato `^[A-Z]{3}$`. A **allowlist** configurável
+(`SUPPORTED_CURRENCIES`, default `BRL,USD,EUR`) é a política pura `CurrencyPolicy`,
+construída pela infraestrutura a partir do ambiente e aplicada nas fronteiras de entrada
+(DTOs HTTP e consumer SQS); moeda fora da lista → `UnsupportedCurrencyError`. O domínio
+não lê variáveis de ambiente. Todas as moedas operam com escala 2.
+
+**`Money.rehydrate`** reconstrói valores já persistidos/serializados (forma canônica, escala
+exatamente 2) e aceita negativos — necessários, por exemplo, para a `difference` da
+reconciliação. `Money.from` permanece estrito e é o único caminho das fronteiras de entrada.
+
 
 ### 3. Serialização
 
