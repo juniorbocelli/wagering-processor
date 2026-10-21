@@ -150,3 +150,5 @@ vite.config.ts.timestamp-*
 
 # Local planning and notes
 IMPLEMENTATION_PLAN.md
+notes.md
+context.md
