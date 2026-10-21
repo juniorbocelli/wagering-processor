@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop, 'feature/**', 'fix/**']
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.3
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Lint & check-money
+        run: bun run lint
+
+      - name: Start infrastructure
+        run: bun run infra:up
+
+      - name: Unit tests
+        run: bun run test:unit
+
+      - name: Integration tests
+        run: bun run test:integration

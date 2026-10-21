@@ -31,5 +31,8 @@ bancos `wagering` e `wagering_test` e as filas FIFO `wager-transactions.fifo`,
 |---|---|
 | `bun run typecheck` | `tsc --noEmit` |
 | `bun run lint` | ESLint + `check-money` (proíbe ponto flutuante no domínio) |
-| `bun run test:unit` | testes unitários |
+| `bun run test:unit` | testes unitários (sem infraestrutura) |
+| `bun run test:integration` | testes contra PostgreSQL real (`wagering_test`); exige `infra:up` e aplica as migrations sozinho |
+| `bun run migration:up` / `migration:down` | aplica todas as migrations pendentes / reverte a última (como `wagering_owner`) |
+| `bun run migration:reset` / `migration:status` | reverte todas / lista as pendentes |
 | `bun run infra:up` / `infra:down` | sobe / derruba a infraestrutura local |
