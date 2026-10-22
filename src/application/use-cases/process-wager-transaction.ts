@@ -168,6 +168,8 @@ export class ProcessWagerTransactionUseCase {
     const prepared = this.prepare(command);
 
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+      // 1. Fast-path (fora de transação): se for um replay frio de transação já comitada,
+      // devolve a resposta original em milissegundos sem disputar lock na carteira.
       const known = await this.lookup(prepared);
       if (known.kind === 'replay') return { kind: 'replay', transaction: known.transaction };
       if (known.kind === 'conflict') throw known.error;
@@ -371,13 +373,16 @@ export class ProcessWagerTransactionUseCase {
       }
     }
 
-    // b. lock pessimista da wallet: primeira leitura dela nesta transação
+    // b. lock pessimista por linha (SELECT ... FOR UPDATE): serializa apenas a carteira em questão,
+    // garantindo leitura do snapshot mais recente e enfileirando requisições sem colisão otimista.
     const lockStartedAt = performance.now();
     const wallet = await this.deps.wallets.lockById(command.walletId);
     this.metrics.walletLockWait((performance.now() - lockStartedAt) / 1000);
     if (wallet === null) throw new WalletNotFoundError(command.walletId);
 
-    // c. lookup de novo, agora serializado pelo lock
+    // c. Safe-path sob lock (double-checked locking): se duas requisições concorrentes passaram
+    // pelo lookup inicial antes de qualquer commit, a segunda é enfileirada no lock e descobre aqui
+    // a transação comitada pela primeira, retornando replay limpo sem duplicar efeitos.
     const known = await this.lookup(prepared);
     if (known.kind === 'replay') return { kind: 'replay', transaction: known.transaction };
     if (known.kind === 'conflict') throw known.error;

@@ -3,8 +3,11 @@ import type { CanonicalPayload, PayloadHash, PayloadHasher } from '../../applica
 
 /**
  * Serialização canônica (subconjunto da RFC 8785 / JCS, ADR-003 §2): chaves ordenadas por
- * unidade de código UTF-16 em todos os níveis, sem espaços, escaping JSON padrão. Aceita
- * apenas strings e objetos — o payload de negócio não contém números nem nulos.
+ * unidade de código UTF-16 em todos os níveis, sem espaços, escaping JSON padrão.
+ *
+ * Racional: Provedores externos usam stacks variadas (Go, Java, Python, C++) que serializam
+ * JSON com ordenação arbitrária de propriedades. A canonização garante que dois payloads
+ * semanticamente idênticos gerem sempre o mesmo SHA-256, evitando falsos conflitos de idempotência.
  */
 export function canonicalJson(value: unknown): string {
   if (typeof value === 'string') {

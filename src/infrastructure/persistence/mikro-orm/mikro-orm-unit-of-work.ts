@@ -70,7 +70,9 @@ export class MikroOrmUnitOfWork implements UnitOfWork {
     try {
       return await this.orm.em.fork().transactional(
         async (em) => {
-          // set_config(..., true) == SET LOCAL, porém parametrizável.
+          // set_config(..., true) equivale a SET LOCAL (parametrizável). O modificador `is_local = true`
+          // restringe o timeout estritamente à transação corrente, evitando que conexões
+          // devolvidas ao pool do PostgreSQL contaminem operações subsequentes com timeouts residuais.
           await em.execute(
             `SELECT set_config('lock_timeout', ?, true), set_config('statement_timeout', ?, true)`,
             [this.options.lockTimeout, this.options.statementTimeout],

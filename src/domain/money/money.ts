@@ -24,7 +24,13 @@ function toCurrencyCode(value: unknown): CurrencyCode {
 
 /**
  * Value Object monetário imutável. Representa o valor como `bigint` em centavos
- * (escala fixa 2) — nunca usa ponto flutuante. Ver ADR-001.
+ * (escala fixa 2).
+ *
+ * Racional (ADR-001):
+ * 1. Elimina erros de ponto flutuante do IEEE 754 sem usar `number`.
+ * 2. Evita bibliotecas de precisão arbitrária (ex.: decimal.js) que alocariam
+ *    milhares de objetos na heap sob alta carga, gerando pausas de Garbage Collector.
+ * 3. Operações com `bigint` mapeiam direto para instruções inteiras de 64 bits na CPU.
  */
 export class Money {
   private constructor(
