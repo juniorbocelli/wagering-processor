@@ -85,16 +85,13 @@ infrastructure (MikroORM, SQS, logs, métricas, auth adapters) ─┤──► a
 | [ADR-007](docs/adr/0007-failure-code-taxonomy.md) | Taxonomia fechada de `failureCode` (com `CHECK` no banco) separada dos códigos de erro de contrato | Aceita | Correção financeira, Idempotência, Mensageria |
 | [ADR-008](docs/adr/0008-out-of-order-reference-policy.md) | Referências fora de ordem: `PENDING_REFERENCE` com backoff 1–60 s, 12 tentativas / TTL 15 min; varredura sem `SKIP LOCKED` (conferência sob o lock da wallet) | Aceita | Mensageria e falhas, Correção financeira |
 | [ADR-009](docs/adr/0009-observability.md) | Logs estruturados (pino, só identificadores) e catálogo de métricas Prometheus com cardinalidade limitada | Aceita | Observabilidade |
+| [ADR-010](docs/adr/0010-multi-process-testing-and-fault-injection.md) | Testes multi-processo (3 instâncias reais, `SIGKILL`, reinício) e injeção de falhas por ambiente; cobre os 8 cenários do §13 | Aceita | Testes, Concorrência |
 | [ADR-011](docs/adr/0011-bounded-retention-inbox-outbox.md) | Retenção limitada de inbox (7 d) e outbox publicada (72 h) em lotes; pendentes nunca apagados | Aceita | Mensageria e falhas |
 | [ADR-012](docs/adr/0012-periodic-reconciliation-detect-not-correct.md) | Reconciliação periódica de todas as wallets em snapshots `REPEATABLE READ` curtos por lote, uma instância por vez (advisory lock); detecta e não corrige | Aceita | Correção financeira, Observabilidade |
 | [ADR-013](docs/adr/0013-spec-first-openapi-contract.md) | Contrato OpenAPI 3.1 *spec-first* com teste de paridade rotas × spec | **Proposta** | Documentação |
 
-**Backlog de ADRs** (números reservados; serão registrados conforme a implementação
-avançar):
-
-| # | Tema | Quando |
-|---|---|---|
-| ADR-010 | Estratégia de testes multi-processo e injeção de falhas | Suíte de concorrência |
+**ADR-013 (OpenAPI spec-first)** permanece **Proposta** — não foi entregue; o contrato HTTP
+está no `README.md` e coberto por testes de integração (ver §8).
 
 Template para novos registros: [`docs/adr/template.md`](docs/adr/template.md).
 ADRs aceitos não são editados no mérito; uma mudança de decisão gera um novo ADR que
@@ -211,11 +208,11 @@ Erros de contrato (não persistidos) usam `code` na resposta HTTP e no atributo
 | Área (pts) | Onde é atendida |
 |---|---|
 | Correção financeira (20) | ADR-001; §4 e §5 deste documento; reconciliação sob demanda e periódica (ADR-012, §9) |
-| Concorrência (20) | ADR-002; `test/concurrency/` (paralelismo real e multi-processo) |
+| Concorrência (20) | ADR-002, ADR-010; `test/concurrency/` (3 processos reais, `SIGKILL`, reinício) |
 | Idempotência (15) | ADR-003; teste 50× paralelo |
 | Mensageria e falhas (15) | ADR-004; matriz de recuperação; testes de crash |
 | Modelagem e arquitetura (10) | Camadas (§2), ADR-005, invariantes encapsuladas (§4) |
-| Testes (10) | `test/unit`, `test/integration` (PostgreSQL e LocalStack reais), `test/concurrency` |
+| Testes (10) | `test/unit`, `test/integration` (PostgreSQL e LocalStack reais), `test/concurrency` (ADR-010); teste de carga em [`docs/load-test.md`](docs/load-test.md) |
 | Observabilidade (5) | ADR-009; logs JSON com `correlationId`, `/metrics`, `/health/live` e `/health/ready` (§9) |
 | Documentação (5) | Este documento, ADRs, `README.md` |
 
@@ -237,6 +234,12 @@ Erros de contrato (não persistidos) usam `code` na resposta HTTP e no atributo
 - Contrato OpenAPI (ADR-013) não entregue: o contrato HTTP está documentado no `README.md`
   e coberto por testes de integração; o ADR permanece **Proposta**.
 - Consultas (`GET`) leem fora de transação, sem lock: refletem o último commit.
+- Teste de carga em laço fechado, no mesmo host dos serviços e com uma execução por cenário:
+  serve para comparar cenários e provar ausência de erros, não como medida de capacidade
+  (ver [`docs/load-test.md`](docs/load-test.md)). Sob hot wallet o throughput cai e o p95
+  dobra, como previsto pela serialização por wallet (ADR-002).
+- Os testes de concorrência dependem de timers curtos (visibility timeout de 5 s, lease de
+  3 s) e de `infra:up`; não rodar em paralelo com a suíte de readiness (pausa contêineres).
 
 ## 9. Camada HTTP e reconciliação
 

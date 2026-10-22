@@ -119,7 +119,8 @@ Veja [`.env.example`](.env.example). As principais:
 | `bun run check:money` | proíbe ponto flutuante no domínio, na aplicação e nos mappers/DTOs |
 | `bun run test:unit` (`bun run test`) | testes unitários (sem infraestrutura) |
 | `bun run test:integration` | PostgreSQL e LocalStack reais; exige `infra:up`; aplica as migrations sozinho |
-| `bun run test:concurrency` | testes de concorrência com paralelismo real |
+| `bun run test:concurrency` | os 8 cenários do §13 com 3 processos reais (`SIGKILL`, reinício); exige `infra:up` |
+| `bun run test:load` | teste de carga (~1 min); regrava os resultados de `docs/load-test.md` |
 | `bun run test:all` | unidade → integração → concorrência |
 | `bun run migration:up` / `migration:down` | aplica as pendentes / reverte a última (como `wagering_owner`) |
 | `bun run migration:reset` / `migration:status` | reverte todas / lista as pendentes |
@@ -140,3 +141,17 @@ Veja [`.env.example`](.env.example). As principais:
   `wallet_reconciliation_last_success_timestamp`).
 - Reconciliação: sob demanda (`POST /wallets/:id/reconciliation`) e periódica (todas as
   wallets, a cada 5 min, uma instância por vez via advisory lock).
+
+## Resultados de carga
+
+`bun run test:load` (3 instâncias, 64 clientes, 15 s medidos por cenário; notebook i5-7200U de
+4 threads compartilhado com PostgreSQL, LocalStack e o gerador). Metodologia, ambiente e
+análise completos em [`docs/load-test.md`](docs/load-test.md).
+
+| Cenário | Throughput | p50 / p95 / p99 | Erros 5xx | Lock timeouts |
+|---|---|---|---|---|
+| Wallets uniformes | 85 req/s | 730 / 1327 / 1680 ms | 0% | 0 |
+| Hot wallet (80% em uma) | 68 req/s | 945 / 2596 / 3176 ms | 0% | 0 |
+
+Todas as wallets reconciliaram e a outbox escoou nos dois cenários. Os números refletem o
+hardware modesto e compartilhado, não a capacidade do sistema.
