@@ -30,7 +30,7 @@ export interface MessagingConfig {
 
 type Env = Record<string, string | undefined>;
 
-function intFromEnv(env: Env, name: string, fallback: number): number {
+export function intFromEnv(env: Env, name: string, fallback: number): number {
   const raw = env[name];
   if (raw === undefined || raw === '') return fallback;
   const value = Number.parseInt(raw, 10);

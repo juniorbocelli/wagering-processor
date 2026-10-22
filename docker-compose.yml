@@ -39,7 +39,7 @@ services:
       timeout: 5s
       retries: 30
 
-  # Perfil `app`: dependem do código das etapas seguintes (migrations e servidor).
+  # Perfil `app`: migrations e serviço (`docker compose --profile app up --scale app=3`).
   migrate:
     profiles: ["app"]
     build: .
@@ -60,9 +60,10 @@ services:
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
       PORT: "3000"
-    # Sem host port fixo para permitir `docker compose up --scale app=3`.
-    expose:
-      - "3000"
+    # Faixa de portas no host: cada réplica de `--scale app=N` (até 10) recebe a sua,
+    # de http://localhost:3000 em diante.
+    ports:
+      - "3000-3009:3000"
     depends_on:
       postgres:
         condition: service_healthy
