@@ -2,6 +2,7 @@
 
 - **Status:** Aceita
 - **Data:** 2026-10-20
+- **Revisão:** 2026-10-22 — o expurgo da inbox não usa `FOR UPDATE SKIP LOCKED` (exigiria `UPDATE` em linhas imutáveis); métrica `retention_last_run_timestamp` substituída por log estruturado
 - **Relacionados:** ADR-003, ADR-004
 - **Edital:** §6.5, §10, §11, §14 (Mensageria e falhas — 15 pts)
 
@@ -43,10 +44,15 @@ Forças em disputa:
     FOR UPDATE SKIP LOCKED);
   ```
 
-  O worker repete enquanto o lote vier cheio. Idem para a inbox por `processed_at`.
+  O worker repete enquanto o lote vier cheio. Idem para a inbox por `processed_at`, com
+  uma diferença: o papel da aplicação **não tem `UPDATE` na inbox** (linhas imutáveis,
+  ADR-004) e `FOR UPDATE` exige esse privilégio. O `DELETE` da inbox usa o mesmo lote
+  ordenado, sem `SKIP LOCKED`: workers concorrentes travam as linhas em comum na mesma
+  ordem (sem deadlock) e o segundo as encontra apagadas.
 - Índices parciais apenas para linhas elegíveis:
   `(published_at) WHERE published_at IS NOT NULL` e `(processed_at)` na inbox.
-- Métricas: `retention_deleted_total{table}`, `retention_last_run_timestamp`.
+- Métrica: `retention_deleted_total{table}`; cada ciclo que apaga linhas também gera um log
+  estruturado.
 
 ### Alternativas consideradas
 

@@ -4,7 +4,8 @@
 - **Data:** 2026-10-20
 - **Revisão:** 2026-10-20 — outbox com ordem por wallet (claim da cabeça + lease), preservação de ordem do grupo FIFO no consumidor e erro desconhecido como transitório, após análise comparativa com implementação de referência
 - **Revisão:** 2026-10-21 — envio explícito à DLQ FIFO com `MessageGroupId`/`MessageDeduplicationId` independentes do corpo; códigos de erro conforme ADR-007 (antes de qualquer código)
-- **Relacionados:** ADR-002, ADR-003, ADR-005, ADR-007
+- **Revisão:** 2026-10-22 — seguintes do grupo esperam o mesmo backoff da mensagem que falhou (em vez de visibilidade 0); varredura de referências pendentes sem `SKIP LOCKED` (ADR-008); limite conhecido de ordem em lote parcial do `SendMessageBatch`; matriz de recuperação mapeada para testes
+- **Relacionados:** ADR-002, ADR-003, ADR-005, ADR-007, ADR-008
 - **Edital:** §3, §5.3, §5.4, §6.5, §7.1, §10, §11, §12, §13 (Integração; Concorrência 5–8), §14 (Mensageria e falhas — 15 pts; eliminatória "publicação de evento antes do commit")
 
 ---
@@ -109,9 +110,10 @@ mensagem em retry bloqueia o seu grupo (*head-of-line*), mas apenas daquela wall
 **Preservação da ordem do grupo dentro de um lote recebido.** Um `ReceiveMessage` pode
 devolver várias mensagens do mesmo grupo. Elas são processadas **sequencialmente** (grupos
 diferentes em paralelo). Se a mensagem *i* falha transitoriamente, as seguintes do mesmo
-grupo **não** são processadas e recebem `ChangeMessageVisibility(0)` imediatamente: o FIFO
-só as reentrega depois de *i*, mantendo a ordem, e o grupo não fica parado até o
-visibility timeout expirar por causa de mensagens lidas e não apagadas.
+grupo **não** são processadas e recebem `ChangeMessageVisibility` com o **mesmo atraso de
+backoff** da mensagem que falhou: voltam juntas, na ordem de envio, sem esperar o
+visibility timeout da fila e sem depender de o broker reter o grupo enquanto a mensagem *i*
+estiver invisível (o LocalStack não o faz; o SQS real sim — a regra vale nos dois).
 
 **Visibility timeout** (30 s) > `lock_timeout` + `statement_timeout`; mensagens longas
 têm a visibilidade estendida por *heartbeat*.
@@ -203,12 +205,17 @@ RETURNING *;
 
 ### 5. Worker de referências pendentes (§7.1)
 
-Mesmo padrão `FOR UPDATE SKIP LOCKED` sobre `wager_transactions WHERE status =
-'PENDING_REFERENCE' AND next_reference_attempt_at <= now()`, reprocessando via o mesmo
-caminho transacional (lock da wallet). Backoff exponencial (1 s → teto 60 s), limite
-de **12 tentativas / TTL 15 min**; esgotado → `REJECTED` com `REFERENCE_NOT_FOUND` e
-evento `WagerTransactionRejected`. Otimização: ao processar uma transação, dependentes
-pendentes da **mesma wallet** (já travada) são resolvidos na mesma transação.
+Reprocessamento via o mesmo caminho transacional (lock da wallet), com backoff
+exponencial (1 s → teto 60 s), limite de **12 tentativas / TTL 15 min**; esgotado →
+`REJECTED` com `REFERENCE_NOT_FOUND` e evento `WagerTransactionRejected`. Otimização: ao
+processar uma transação, dependentes pendentes da **mesma wallet** (já travada) são
+resolvidos na mesma transação.
+
+> **Revisão (2026-10-22):** a varredura **não** usa `FOR UPDATE SKIP LOCKED` sobre
+> `wager_transactions`: travar a transação antes da wallet inverteria a ordem de locks. Ela
+> lista os vencidos com um `SELECT` simples e o caso de uso confere, **sob o lock da
+> wallet**, que o item ainda está pendente e vencido. Detalhes no
+> [ADR-008](0008-out-of-order-reference-policy.md).
 
 ### 6. Matriz de recuperação
 
@@ -220,6 +227,19 @@ pendentes da **mesma wallet** (já travada) são resolvidos na mesma transação
 | Após publicar, antes de marcar | outbox com lease | lease expira → republica mesmo `eventId` |
 | PG indisponível | consumidor não comita | retry com backoff → DLQ após 5 recebimentos |
 | SQS indisponível | outbox acumula | backoff; nada se perde; `outbox_lag` sobe |
+
+Cobertura por testes de integração (PostgreSQL + LocalStack reais):
+
+| Linha da matriz | Teste |
+|---|---|
+| Antes do commit | `sqs-consumer` — erro transitório (lock timeout): sem efeito parcial, retry e sucesso |
+| Após commit, antes do ack | `sqs-consumer` — crash após commit e antes do ack; redelivery com um único efeito |
+| Após commit, antes de publicar | `outbox-publisher` — publicação por outra instância; ordem e `eventId` preservados |
+| Após publicar, antes de marcar | `outbox-publisher` — lease expira, evento republicado com o mesmo `eventId` |
+| PG indisponível | `sqs-consumer` — transitório com backoff; persistente vai à DLQ após `maxReceiveCount` |
+| SQS indisponível | `outbox-publisher` — falha na cabeça segura a wallet; as demais seguem; nada se perde |
+| DLQ indisponível | `sqs-consumer` — mensagem não é apagada |
+| `SIGTERM` | `sqs-consumer` — concluída no prazo ou devolvida com visibilidade 0 |
 
 ## Consequências e Trade-offs
 
@@ -246,6 +266,12 @@ pendentes da **mesma wallet** (já travada) são resolvidos na mesma transação
 - Um evento "cabeça" que falha repetidamente **bloqueia os eventos seguintes da mesma
   wallet** (head-of-line) até ser publicado — preço consciente da ordem; visível em
   `outbox_stuck_total`. Outras wallets não são afetadas.
+- **Lote parcial no `SendMessageBatch`:** o SQS não "desenvia". Se a entrada *i* de um lote
+  falha e as seguintes foram aceitas, a cabeça é retentada e as seguintes têm o lease
+  devolvido; elas serão republicadas **com o mesmo `eventId`** (a deduplicação FIFO de 5 min
+  descarta a repetição). Em tese, um consumidor pode ver o evento seguinte antes da cabeça
+  retentada — por isso os consumidores devem conferir `walletVersion`. A janela é estreita e
+  não gera perda.
 - O claim faz uma subconsulta `NOT EXISTS` por candidato (coberta pelo índice parcial
   `(aggregate_id, seq)`); custo a ser medido no teste de carga.
 - `LISTEN/NOTIFY` para reduzir latência de polling fica como evolução.

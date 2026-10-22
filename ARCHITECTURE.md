@@ -83,7 +83,9 @@ infrastructure (MikroORM, SQS, logs, métricas, auth adapters) ─┤──► a
 | [ADR-005](docs/adr/0005-mikro-orm.md) | MikroORM 7.x: `EntitySchema`, mappers para `rehydrate`, `fork` + `transactional`, migrations SQL reversíveis em lista explícita | Aceita | Modelagem e arquitetura |
 | [ADR-006](docs/adr/0006-decoupled-authentication.md) | Autenticação desacoplada via `ProviderIdentityPort` + guard no-op (desenho alvo: Keycloak client credentials) | Aceita | — (§2) |
 | [ADR-007](docs/adr/0007-failure-code-taxonomy.md) | Taxonomia fechada de `failureCode` (com `CHECK` no banco) separada dos códigos de erro de contrato | Aceita | Correção financeira, Idempotência, Mensageria |
-| [ADR-011](docs/adr/0011-bounded-retention-inbox-outbox.md) | Retenção limitada de inbox (7 d) e outbox publicada (72 h) em lotes com `SKIP LOCKED`; pendentes nunca apagados | Aceita | Mensageria e falhas |
+| [ADR-008](docs/adr/0008-out-of-order-reference-policy.md) | Referências fora de ordem: `PENDING_REFERENCE` com backoff 1–60 s, 12 tentativas / TTL 15 min; varredura sem `SKIP LOCKED` (conferência sob o lock da wallet) | Aceita | Mensageria e falhas, Correção financeira |
+| [ADR-009](docs/adr/0009-observability.md) | Logs estruturados (pino, só identificadores) e catálogo de métricas Prometheus com cardinalidade limitada | Aceita | Observabilidade |
+| [ADR-011](docs/adr/0011-bounded-retention-inbox-outbox.md) | Retenção limitada de inbox (7 d) e outbox publicada (72 h) em lotes; pendentes nunca apagados | Aceita | Mensageria e falhas |
 | [ADR-012](docs/adr/0012-periodic-reconciliation-detect-not-correct.md) | Reconciliação periódica de todas as wallets em snapshot `REPEATABLE READ`, uma instância por vez (advisory lock); detecta e não corrige | Aceita | Correção financeira, Observabilidade |
 | [ADR-013](docs/adr/0013-spec-first-openapi-contract.md) | Contrato OpenAPI 3.1 *spec-first* com teste de paridade rotas × spec | **Proposta** | Documentação |
 
@@ -92,8 +94,6 @@ avançar):
 
 | # | Tema | Quando |
 |---|---|---|
-| ADR-008 | Política de referências fora de ordem: backoff, limite e TTL | Passo 4 |
-| ADR-009 | Observabilidade: logs estruturados, catálogo de métricas, health checks | Passo 4 |
 | ADR-010 | Estratégia de testes multi-processo e injeção de falhas | Passo 6 |
 
 Template para novos registros: [`docs/adr/template.md`](docs/adr/template.md).
