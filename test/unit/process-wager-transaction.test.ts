@@ -634,11 +634,11 @@ describe('command validation', () => {
     expect(await violations({ money: { amount: '1.234', currency: 'BRL' } })).toContain('money');
   });
   test('zero amount is invalid for BET', async () => {
-    expect(await violations({ money: { amount: '0.00', currency: 'BRL' } })).toContain('body');
+    expect(await violations({ money: { amount: '0.00', currency: 'BRL' } })).toContain('money');
   });
   test('REFUND/ROLLBACK require a reference', async () => {
-    expect(await violations({ kind: 'REFUND' })).toContain('body');
-    expect(await violations({ kind: 'ROLLBACK', referenceExternalTransactionId: null })).toContain('body');
+    expect(await violations({ kind: 'REFUND' })).toContain('referenceExternalTransactionId');
+    expect(await violations({ kind: 'ROLLBACK', referenceExternalTransactionId: null })).toContain('referenceExternalTransactionId');
   });
   test('BET cannot carry a reference; nobody references itself', async () => {
     expect(await violations({ referenceExternalTransactionId: 'x' })).toContain('referenceExternalTransactionId');

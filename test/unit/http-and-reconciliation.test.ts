@@ -11,7 +11,7 @@ import {
 import { decodeLedgerCursor, encodeLedgerCursor } from '../../src/application/use-cases/queries.ts';
 import { evaluateAudit } from '../../src/application/use-cases/reconcile-wallet.ts';
 import type { WalletLedgerAudit } from '../../src/application/ports/reconciliation.ts';
-import { parseLedgerQuery, parseSubmitTransaction } from '../../src/interfaces/http/dto/schemas.ts';
+import { parseCreateWallet, parseLedgerQuery, parseSubmitTransaction } from '../../src/interfaces/http/dto/schemas.ts';
 import { statusFor } from '../../src/interfaces/http/controllers/wagering.controller.ts';
 import { mapError } from '../../src/interfaces/http/filters/application-exception.filter.ts';
 
@@ -102,6 +102,16 @@ describe('DTO parsing', () => {
     for (const bad of [{ limit: 'x' }, { limit: '-1' }, { limit: ['1'] }, { cursor: '' }, { cursor: ['a'] }]) {
       expect(() => parseLedgerQuery(bad)).toThrow(ValidationError);
     }
+  });
+
+  test('parseCreateWallet rejects blank and NUL playerId', () => {
+    for (const badPlayerId of ['', '   ', 'p\u0000layer', 'x'.repeat(129)]) {
+      expect(() => parseCreateWallet({ playerId: badPlayerId, initialBalance: { amount: '10.00', currency: 'BRL' } })).toThrow(ValidationError);
+    }
+    expect(parseCreateWallet({ playerId: 'valid-player', initialBalance: { amount: '10.00', currency: 'BRL' } })).toEqual({
+      playerId: 'valid-player',
+      initialBalance: { amount: '10.00', currency: 'BRL' },
+    });
   });
 });
 

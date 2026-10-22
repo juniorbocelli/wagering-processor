@@ -109,7 +109,7 @@ function outbox(overrides: { faults?: FaultInjector; metrics?: Metrics } = {}) {
 }
 
 describe('OutboxPublisherWorker', () => {
-  test('publishes each wallet in seq order, in batches of at most 10, and marks only what SQS accepted', async () => {
+  test('publishes each wallet in seq order, one event per SQS call, and marks only what SQS accepted', async () => {
     const { store, publisher, worker } = outbox();
     const a = Array.from({ length: 12 }, (_, i) => event('wallet-a', `a${i + 1}`));
     const b = [event('wallet-b', 'b1'), event('wallet-b', 'b2')];
@@ -118,11 +118,8 @@ describe('OutboxPublisherWorker', () => {
     expect(await worker.runOnce()).toBe(14);
 
     const batchesOf = (prefix: string) => publisher.batches.filter((ids) => ids[0]?.startsWith(prefix));
-    expect(batchesOf('a')).toEqual([
-      ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8', 'a9', 'a10'],
-      ['a11', 'a12'],
-    ]);
-    expect(batchesOf('b')).toEqual([['b1', 'b2']]);
+    expect(batchesOf('a')).toEqual(a.map((e) => [e.message.id]));
+    expect(batchesOf('b')).toEqual([['b1'], ['b2']]);
     expect(store.published.sort()).toEqual([...a, ...b].map((e) => e.message.id).sort());
     expect(store.retried).toEqual([]);
     expect(store.released).toEqual([]);
@@ -153,7 +150,7 @@ describe('OutboxPublisherWorker', () => {
     expect(store.released).toEqual(['a3']);
   });
 
-  test('a failure in an earlier batch also releases the lease of the later batches of the wallet', async () => {
+  test('a failure in an earlier event releases the lease of the later events of the wallet', async () => {
     const { store, publisher, worker } = outbox();
     publisher.rejected = new Set(['a3']);
     const a = Array.from({ length: 12 }, (_, i) => event('wallet-a', `a${i + 1}`));
@@ -161,7 +158,7 @@ describe('OutboxPublisherWorker', () => {
 
     await worker.runOnce();
 
-    expect(publisher.batches).toHaveLength(1); // the second batch was never sent
+    expect(publisher.batches).toHaveLength(3); // a1 and a2 sent and accepted, a3 sent and rejected, rest not sent
     expect(store.published).toEqual(['a1', 'a2']);
     expect(store.retried.map((m) => m.id)).toEqual(['a3']);
     expect(store.released.sort()).toEqual(['a10', 'a11', 'a12', 'a4', 'a5', 'a6', 'a7', 'a8', 'a9']);

@@ -15,7 +15,7 @@ let superuser: MikroORM;
 let services: WageringServices;
 const logs: { message: string; fields: LogFields | undefined }[] = [];
 let divergences = 0;
-let sweeps: { divergent: number; at: Date }[] = [];
+const sweeps: { divergent: number; at: Date }[] = [];
 
 const logger: Logger = {
   debug: () => undefined,

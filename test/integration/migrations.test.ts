@@ -11,7 +11,7 @@ const FUNCTIONS = [
   'fn_wallet_balance_has_ledger',
   'fn_outbox_immutable',
 ];
-const RETENTION_INDEXES = ['ix_inbox_processed', 'ix_outbox_published'];
+const RETENTION_INDEXES = ['ix_inbox_processed', 'ix_outbox_lag', 'ix_outbox_published'];
 
 let owner: MikroORM;
 
@@ -59,6 +59,7 @@ describe('migrations are reversible', () => {
 
     const reverted = await owner.migrator.down({ to: 0 });
     expect(reverted.map((m) => m.name)).toEqual([
+      'Migration20261022000004_outbox_lag_index',
       'Migration20261021000003_retention_indexes',
       'Migration20261020000002_integrity_triggers',
       'Migration20261020000001_initial',
@@ -72,16 +73,16 @@ describe('migrations are reversible', () => {
       'Migration20261020000001_initial',
       'Migration20261020000002_integrity_triggers',
       'Migration20261021000003_retention_indexes',
+      'Migration20261022000004_outbox_lag_index',
     ]);
     expect(await existing(TABLES, 'tables')).toEqual([...TABLES].sort());
     expect(await existing(FUNCTIONS, 'functions')).toEqual([...FUNCTIONS].sort());
     expect(await indexes()).toEqual(RETENTION_INDEXES);
   });
 
-  test('the retention-indexes migration alone can be reverted and reapplied', async () => {
+  test('the lag index migration alone can be reverted and reapplied', async () => {
     await owner.migrator.down();
-    expect(await indexes()).toEqual([]);
-    expect(await existing(FUNCTIONS, 'functions')).toEqual([...FUNCTIONS].sort());
+    expect(await indexes()).toEqual(['ix_inbox_processed', 'ix_outbox_published']);
     await owner.migrator.up();
     expect(await indexes()).toEqual(RETENTION_INDEXES);
   });

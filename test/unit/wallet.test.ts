@@ -53,7 +53,7 @@ describe('Wallet.open', () => {
     ).toThrow(InvalidWalletError);
   });
 
-  test.each(['', 'x'.repeat(129)])('rejects playerId of invalid length', (playerId) => {
+  test.each(['', '   ', 'x'.repeat(129), 'p\u0000layer'])('rejects playerId of invalid length, blank or containing NUL', (playerId) => {
     expect(() =>
       Wallet.open({ id: 'w', playerId, initialBalance: brl('0'), at }),
     ).toThrow(InvalidWalletError);
