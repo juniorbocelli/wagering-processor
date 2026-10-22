@@ -13,6 +13,7 @@ import {
   type FaultInjector,
   type IdGenerator,
 } from '../application/ports/runtime.ts';
+import { NOOP_METRICS, type Metrics } from '../application/ports/observability.ts';
 import { CanonicalJsonSha256Hasher } from './hashing/canonical-json-sha256-hasher.ts';
 import {
   EntityManagerContext,
@@ -26,12 +27,14 @@ import {
   MikroOrmWagerTransactionRepository,
   MikroOrmWalletRepository,
 } from './persistence/mikro-orm/repositories.ts';
+import { MikroOrmMessagingStore } from './persistence/mikro-orm/messaging-store.ts';
 import { SystemClock, UuidV7Generator } from './runtime/system-runtime.ts';
 
 export interface WageringServicesOptions {
   clock?: Clock;
   ids?: IdGenerator;
   faults?: FaultInjector;
+  metrics?: Metrics;
   pendingReference?: PendingReferencePolicy;
   unitOfWork?: UnitOfWorkOptions;
 }
@@ -51,6 +54,8 @@ export function buildWageringServices(orm: MikroORM, options: WageringServicesOp
   const clock = options.clock ?? new SystemClock();
   const ids = options.ids ?? new UuidV7Generator();
   const hasher = new CanonicalJsonSha256Hasher();
+  const metrics = options.metrics ?? NOOP_METRICS;
+  const store = new MikroOrmMessagingStore(orm);
 
   const settlement = new WagerSettlement({
     wallets,
@@ -65,6 +70,10 @@ export function buildWageringServices(orm: MikroORM, options: WageringServicesOp
 
   return {
     uow,
+    clock,
+    metrics,
+    /** Claim/ack da outbox, varredura de referências pendentes e retenção (fora da transação financeira). */
+    store,
     repositories: { wallets, transactions, ledger, inbox, outbox },
     hasher,
     processWagerTransaction: new ProcessWagerTransactionUseCase({
@@ -76,6 +85,7 @@ export function buildWageringServices(orm: MikroORM, options: WageringServicesOp
       hasher,
       clock,
       ids,
+      metrics,
     }),
     openWallet: new OpenWalletUseCase({ uow, wallets, transactions, ledger, outbox, hasher, clock, ids }),
     reprocessPendingReference: new ReprocessPendingReferenceUseCase({
@@ -83,6 +93,8 @@ export function buildWageringServices(orm: MikroORM, options: WageringServicesOp
       wallets,
       transactions,
       settlement,
+      clock,
+      metrics,
     }),
   };
 }

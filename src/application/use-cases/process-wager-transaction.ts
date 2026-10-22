@@ -2,12 +2,14 @@ import {
   ConcurrencyConflictError,
   IdempotencyConflictError,
   InboxPayloadMismatchError,
+  LockTimeoutError,
   TransientInfrastructureError,
   UniqueViolationError,
   ValidationError,
   WalletNotFoundError,
   type Violation,
 } from '../errors.ts';
+import { NOOP_METRICS, type Metrics } from '../ports/observability.ts';
 import type {
   InboxRepository,
   UnitOfWork,
@@ -84,6 +86,8 @@ export interface ProcessWagerTransactionDependencies {
   hasher: PayloadHasher;
   clock: Clock;
   ids: IdGenerator;
+  /** Opcional: sem ela, nenhuma métrica é emitida. */
+  metrics?: Metrics;
 }
 
 /**
@@ -97,9 +101,46 @@ export interface ProcessWagerTransactionDependencies {
  *   4. `23505` em `uq_wtx_*` / deadlock → repete do passo 2 (máx. 3×).
  */
 export class ProcessWagerTransactionUseCase {
-  constructor(private readonly deps: ProcessWagerTransactionDependencies) {}
+  private readonly metrics: Metrics;
+
+  constructor(private readonly deps: ProcessWagerTransactionDependencies) {
+    this.metrics = deps.metrics ?? NOOP_METRICS;
+  }
 
   async execute(
+    command: ProcessWagerTransactionCommand,
+    ctx: ProcessContext,
+  ): Promise<ProcessWagerTransactionResult> {
+    const startedAt = performance.now();
+    try {
+      const result = await this.settleWithRetries(command, ctx);
+      this.observe(result);
+      return result;
+    } catch (error) {
+      if (error instanceof IdempotencyConflictError) this.metrics.idempotencyConflict();
+      if (error instanceof LockTimeoutError) this.metrics.walletLockTimeout();
+      throw error;
+    } finally {
+      this.metrics.processingDuration((performance.now() - startedAt) / 1000);
+    }
+  }
+
+  /** Métricas só depois do commit: `applied` e `replay` já são fatos comitados. */
+  private observe(result: ProcessWagerTransactionResult): void {
+    switch (result.kind) {
+      case 'applied':
+        this.metrics.transactionSettled(result.transaction.status, result.transaction.kind);
+        break;
+      case 'replay':
+        this.metrics.idempotencyReplay();
+        break;
+      case 'duplicate-delivery':
+        this.metrics.inboxDuplicate();
+        break;
+    }
+  }
+
+  private async settleWithRetries(
     command: ProcessWagerTransactionCommand,
     ctx: ProcessContext,
   ): Promise<ProcessWagerTransactionResult> {
@@ -276,7 +317,9 @@ export class ProcessWagerTransactionUseCase {
     }
 
     // b. lock pessimista da wallet: primeira leitura dela nesta transação
+    const lockStartedAt = performance.now();
     const wallet = await this.deps.wallets.lockById(command.walletId);
+    this.metrics.walletLockWait((performance.now() - lockStartedAt) / 1000);
     if (wallet === null) throw new WalletNotFoundError(command.walletId);
 
     // c. lookup de novo, agora serializado pelo lock
