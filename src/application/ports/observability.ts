@@ -45,6 +45,13 @@ export interface Metrics {
   outboxStuck(): void;
   /** `retention_deleted_total{table}` */
   retentionDeleted(table: 'outbox_messages' | 'inbox_messages', rows: number): void; // check-money:allow
+  /** `wallet_reconciliation_divergences_total` — divergência detectada (endpoint ou varredura). */
+  reconciliationDivergence(): void;
+  /**
+   * Varredura periódica concluída: `wallet_reconciliation_divergent_wallets` (gauge) e
+   * `wallet_reconciliation_last_success_timestamp`.
+   */
+  reconciliationSweepCompleted(divergentWallets: number, at: Date): void; // check-money:allow
 }
 
 export const NOOP_METRICS: Metrics = {
@@ -59,4 +66,6 @@ export const NOOP_METRICS: Metrics = {
   processingDuration: () => undefined,
   outboxStuck: () => undefined,
   retentionDeleted: () => undefined,
+  reconciliationDivergence: () => undefined,
+  reconciliationSweepCompleted: () => undefined,
 };

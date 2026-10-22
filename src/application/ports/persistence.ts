@@ -55,6 +55,12 @@ export interface LedgerRepository {
   findByTransactionId(transactionId: string): Promise<WalletLedgerEntry | null>;
   /** Lançamentos de uma wallet em ordem de `walletVersion`. */
   listByWallet(walletId: string): Promise<WalletLedgerEntry[]>;
+  /**
+   * Página keyset: lançamentos com `walletVersion > afterVersion`, em ordem crescente, no
+   * máximo `limit`. O ledger é append-only com `walletVersion` crescente, então a página
+   * é estável sob inserções concorrentes.
+   */
+  listPage(walletId: string, afterVersion: number, limit: number): Promise<WalletLedgerEntry[]>; // check-money:allow
 }
 
 export interface InboxRepository {

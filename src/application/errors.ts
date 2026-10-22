@@ -33,6 +33,23 @@ export class WalletNotFoundError extends ApplicationError {
   }
 }
 
+export class TransactionNotFoundError extends ApplicationError {
+  readonly code = 'TRANSACTION_NOT_FOUND';
+
+  constructor(reference: string) {
+    super(`Transaction ${reference} not found`);
+  }
+}
+
+/** Identidade autenticada diferente do provedor do recurso/payload (ADR-006 §4). */
+export class ProviderIdentityMismatchError extends ApplicationError {
+  readonly code = 'PROVIDER_IDENTITY_MISMATCH';
+
+  constructor() {
+    super('Authenticated provider does not match the requested provider');
+  }
+}
+
 export class WalletAlreadyExistsError extends ApplicationError {
   readonly code = 'WALLET_ALREADY_EXISTS';
 

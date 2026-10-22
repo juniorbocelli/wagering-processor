@@ -69,6 +69,26 @@ const MAX_ATTEMPTS = 3; // check-money:allow
 const CONFLICT_BACKOFF_MS = 25; // check-money:allow
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/**
+ * Limites dos textos opacos, alinhados às colunas do banco. Aplicados aqui (e não só no DTO
+ * HTTP) para que a entrada SQS receba o mesmo `ValidationError` permanente, em vez de um erro
+ * `22001`/`22021` do PostgreSQL tratado como transitório e reentregue até a DLQ.
+ */
+const OPAQUE_TEXT_LIMITS = [
+  ['providerId', 64],
+  ['externalTransactionId', 128],
+  ['playerId', 128],
+  ['roundId', 128],
+  ['gameId', 128],
+] as const satisfies ReadonlyArray<readonly [keyof ProcessWagerTransactionCommand, number]>; // check-money:allow
+
+function opaqueTextProblem(value: unknown, max: number): string | null { // check-money:allow
+  if (typeof value !== 'string' || value.trim().length === 0) return 'must be a non-blank string';
+  if (value.length > max) return `must have at most ${max} characters`;
+  if (value.includes('\u0000')) return 'must not contain NUL characters';
+  return null;
+}
+
 /** Kinds que aceitam `referenceExternalTransactionId` (BET e OPENING não referenciam nada). */
 const REFERENCING_KINDS: readonly string[] = [
   WagerTransactionKind.Win,
@@ -179,6 +199,17 @@ export class ProcessWagerTransactionUseCase {
 
   private prepare(command: ProcessWagerTransactionCommand): Prepared {
     const violations: Violation[] = [];
+    for (const [field, max] of OPAQUE_TEXT_LIMITS) {
+      const problem = opaqueTextProblem(command[field], max);
+      if (problem !== null) violations.push({ field, message: problem });
+    }
+    const referenceText = command.referenceExternalTransactionId;
+    if (referenceText !== undefined && referenceText !== null) {
+      const problem = opaqueTextProblem(referenceText, 128);
+      if (problem !== null) violations.push({ field: 'referenceExternalTransactionId', message: problem });
+    }
+    const keyProblem = opaqueTextProblem(command.idempotencyKey, 255);
+    if (keyProblem !== null) violations.push({ field: 'idempotencyKey', message: keyProblem });
     if (typeof command.walletId !== 'string' || !UUID_PATTERN.test(command.walletId)) {
       violations.push({ field: 'walletId', message: 'must be a UUID' });
     }
