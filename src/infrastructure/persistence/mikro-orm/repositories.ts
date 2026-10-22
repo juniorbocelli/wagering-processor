@@ -191,6 +191,15 @@ export class MikroOrmLedgerRepository implements LedgerRepository {
       .find(LedgerEntryRecordSchema, { walletId }, { orderBy: { walletVersion: 'asc' }, refresh: true });
     return records.map((record: LedgerEntryRecord) => ledgerEntryMapper.toDomain(record));
   }
+
+  async listPage(walletId: string, afterVersion: number, limit: number): Promise<WalletLedgerEntry[]> { // check-money:allow
+    const records = await this.context.current().find(
+      LedgerEntryRecordSchema,
+      { walletId, walletVersion: { $gt: afterVersion } },
+      { orderBy: { walletVersion: 'asc' }, limit, refresh: true },
+    );
+    return records.map((record: LedgerEntryRecord) => ledgerEntryMapper.toDomain(record));
+  }
 }
 
 export class MikroOrmInboxRepository implements InboxRepository {

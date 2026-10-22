@@ -13,7 +13,16 @@ import {
   type FaultInjector,
   type IdGenerator,
 } from '../application/ports/runtime.ts';
-import { NOOP_METRICS, type Metrics } from '../application/ports/observability.ts';
+import { NOOP_LOGGER, NOOP_METRICS, type Logger, type Metrics } from '../application/ports/observability.ts';
+import {
+  GetTransactionUseCase,
+  GetWalletUseCase,
+  ListLedgerUseCase,
+} from '../application/use-cases/queries.ts';
+import {
+  ReconcileAllWalletsUseCase,
+  ReconcileWalletUseCase,
+} from '../application/use-cases/reconcile-wallet.ts';
 import { CanonicalJsonSha256Hasher } from './hashing/canonical-json-sha256-hasher.ts';
 import {
   EntityManagerContext,
@@ -28,6 +37,7 @@ import {
   MikroOrmWalletRepository,
 } from './persistence/mikro-orm/repositories.ts';
 import { MikroOrmMessagingStore } from './persistence/mikro-orm/messaging-store.ts';
+import { MikroOrmReconciliationStore } from './persistence/mikro-orm/reconciliation-store.ts';
 import { SystemClock, UuidV7Generator } from './runtime/system-runtime.ts';
 
 export interface WageringServicesOptions {
@@ -35,8 +45,11 @@ export interface WageringServicesOptions {
   ids?: IdGenerator;
   faults?: FaultInjector;
   metrics?: Metrics;
+  logger?: Logger;
   pendingReference?: PendingReferencePolicy;
   unitOfWork?: UnitOfWorkOptions;
+  /** Tamanho do lote (keyset) da reconciliação periódica; padrão 500. */
+  reconciliationBatchSize?: number; // check-money:allow
 }
 
 /**
@@ -55,7 +68,9 @@ export function buildWageringServices(orm: MikroORM, options: WageringServicesOp
   const ids = options.ids ?? new UuidV7Generator();
   const hasher = new CanonicalJsonSha256Hasher();
   const metrics = options.metrics ?? NOOP_METRICS;
+  const logger = options.logger ?? NOOP_LOGGER;
   const store = new MikroOrmMessagingStore(orm);
+  const reconciliationStore = new MikroOrmReconciliationStore(orm);
 
   const settlement = new WagerSettlement({
     wallets,
@@ -95,6 +110,17 @@ export function buildWageringServices(orm: MikroORM, options: WageringServicesOp
       settlement,
       clock,
       metrics,
+    }),
+    getWallet: new GetWalletUseCase({ wallets }),
+    listLedger: new ListLedgerUseCase({ wallets, ledger }),
+    getTransaction: new GetTransactionUseCase({ transactions }),
+    reconcileWallet: new ReconcileWalletUseCase({ store: reconciliationStore, metrics, logger }),
+    reconcileAllWallets: new ReconcileAllWalletsUseCase({
+      store: reconciliationStore,
+      metrics,
+      logger,
+      clock,
+      ...(options.reconciliationBatchSize === undefined ? {} : { batchSize: options.reconciliationBatchSize }),
     }),
   };
 }

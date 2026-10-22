@@ -71,6 +71,21 @@ export class PrometheusMetrics implements Metrics {
     labelNames: ['table'],
     registers: [this.registry],
   });
+  private readonly reconciliationDivergences = new Counter({
+    name: 'wallet_reconciliation_divergences_total',
+    help: 'Wallets found with a stored balance or ledger chain that does not match the ledger',
+    registers: [this.registry],
+  });
+  private readonly divergentWallets = new Gauge({
+    name: 'wallet_reconciliation_divergent_wallets',
+    help: 'Divergent wallets found by the last completed periodic reconciliation sweep',
+    registers: [this.registry],
+  });
+  private readonly reconciliationLastSuccess = new Gauge({
+    name: 'wallet_reconciliation_last_success_timestamp',
+    help: 'Unix time (seconds) of the last completed periodic reconciliation sweep',
+    registers: [this.registry],
+  });
 
   /**
    * `outbox_lag_seconds` é lida do banco a cada *scrape* (idade do evento pendente mais
@@ -126,6 +141,18 @@ export class PrometheusMetrics implements Metrics {
   }
   retentionDeleted(table: 'outbox_messages' | 'inbox_messages', rows: number): void {
     this.retention.inc({ table }, rows);
+  }
+  reconciliationDivergence(): void {
+    this.reconciliationDivergences.inc();
+  }
+  reconciliationSweepCompleted(divergentWallets: number, at: Date): void {
+    this.divergentWallets.set(divergentWallets);
+    this.reconciliationLastSuccess.set(at.getTime() / 1000);
+  }
+
+  /** `Content-Type` do formato de exposição Prometheus. */
+  get contentType(): string {
+    return this.registry.contentType;
   }
 
   /** Corpo do endpoint `/metrics` (formato de exposição Prometheus). */
