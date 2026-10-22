@@ -144,6 +144,28 @@ export class MikroOrmWagerTransactionRepository implements WagerTransactionRepos
     return records.map((record: WagerTransactionRecord) => wagerTransactionMapper.toDomain(record));
   }
 
+  async listPendingByReference(
+    walletId: string,
+    providerId: string,
+    referenceExternalTransactionId: string,
+  ): Promise<WagerTransaction[]> {
+    const records = await this.context.current().find(
+      WagerTransactionRecordSchema,
+      { walletId, providerId, referenceExternalTransactionId, status: 'PENDING_REFERENCE' },
+      { orderBy: { createdAt: 'asc', id: 'asc' }, refresh: true },
+    );
+    return records.map((record: WagerTransactionRecord) => wagerTransactionMapper.toDomain(record));
+  }
+
+  async existsProcessedReversalOf(referenceTransactionId: string): Promise<boolean> {
+    const count = await this.context.current().count(WagerTransactionRecordSchema, {
+      referenceTransactionId,
+      status: 'PROCESSED',
+      kind: { $in: ['REFUND', 'ROLLBACK'] },
+    });
+    return count > 0;
+  }
+
   private one(record: WagerTransactionRecord | null): WagerTransaction | null {
     return record === null ? null : wagerTransactionMapper.toDomain(record);
   }
@@ -184,6 +206,14 @@ export class MikroOrmInboxRepository implements InboxRepository {
       'run',
     );
     return result.affectedRows === 1;
+  }
+
+  async findPayloadHash(consumerName: string, messageId: string): Promise<string | null> {
+    const rows = await this.context.current().execute<{ payload_hash: string }[]>(
+      'SELECT payload_hash FROM inbox_messages WHERE consumer_name = ? AND message_id = ?',
+      [consumerName, messageId],
+    );
+    return rows[0]?.payload_hash ?? null;
   }
 }
 

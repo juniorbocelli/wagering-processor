@@ -78,8 +78,15 @@ async run<T>(work: () => Promise<T>): Promise<T> {
 - **Identity Map**: garante uma única instância por linha dentro da unidade de trabalho;
   como o lock (`em.findOne(WalletRecord, id, { lockMode: LockMode.PESSIMISTIC_WRITE })`)
   é a **primeira** leitura da wallet no fork, não há estado obsoleto.
-- **Unit of Work**: o flush ordena INSERTs por dependência de FK (transação → ledger) e
-  agrupa as escritas num único round-trip por tabela.
+- **Unit of Work (como implementado):** o ORM entra com o que é seguro de delegar —
+  fork por unidade de trabalho, transação gerenciada, `LockMode.PESSIMISTIC_WRITE`,
+  mapeamento de Records e conversão de exceções. As **escritas são statements imediatos**
+  (`em.insert` / `nativeUpdate`) na ordem das chamadas, e não um flush diferido: o use case
+  precisa que a linha recém-inserida seja visível aos lookups seguintes da mesma transação
+  (referência resolvida, reversão já aplicada), e o `UPDATE` da wallet deve ser um por
+  movimento (o trigger diferido exige `version + 1` por linha). Com as FKs diferíveis, a
+  ordem entre tabelas é irrelevante. Consequência assumida: leituras usam `refresh: true`
+  para nunca servir linha obsoleta do Identity Map, que deixa de ser fonte de verdade.
 - **`version`** é mapeado como coluna comum (não `version: true`), pois o edital define
   que ela só incrementa quando o **saldo** muda — regra do domínio. A atualização da
   wallet usa `UPDATE ... WHERE id = ? AND version = ?` com checagem de linhas afetadas

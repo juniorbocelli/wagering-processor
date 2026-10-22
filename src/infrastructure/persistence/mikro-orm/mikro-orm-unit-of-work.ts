@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { LockMode, IsolationLevel } from '@mikro-orm/core';
 import type { EntityManager, MikroORM } from '@mikro-orm/postgresql';
 import type { UnitOfWork } from '../../../application/ports/persistence.ts';
+import { mapDriverError } from './driver-errors.ts';
 
 /**
  * Contexto do `EntityManager` transacional corrente (AsyncLocalStorage). Com
@@ -62,21 +63,25 @@ export class MikroOrmUnitOfWork implements UnitOfWork {
     }
   }
 
-  run<T>(work: () => Promise<T>): Promise<T> {
+  async run<T>(work: () => Promise<T>): Promise<T> {
     if (this.context.inTransaction()) {
       return work();
     }
-    return this.orm.em.fork().transactional(
-      async (em) => {
-        // set_config(..., true) == SET LOCAL, porém parametrizável.
-        await em.execute(
-          `SELECT set_config('lock_timeout', ?, true), set_config('statement_timeout', ?, true)`,
-          [this.options.lockTimeout, this.options.statementTimeout],
-        );
-        return this.context.run(em, work);
-      },
-      { isolationLevel: IsolationLevel.READ_COMMITTED },
-    );
+    try {
+      return await this.orm.em.fork().transactional(
+        async (em) => {
+          // set_config(..., true) == SET LOCAL, porém parametrizável.
+          await em.execute(
+            `SELECT set_config('lock_timeout', ?, true), set_config('statement_timeout', ?, true)`,
+            [this.options.lockTimeout, this.options.statementTimeout],
+          );
+          return this.context.run(em, work);
+        },
+        { isolationLevel: IsolationLevel.READ_COMMITTED },
+      );
+    } catch (error) {
+      throw mapDriverError(error);
+    }
   }
 }
 
