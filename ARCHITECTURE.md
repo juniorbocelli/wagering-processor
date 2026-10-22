@@ -86,7 +86,7 @@ infrastructure (MikroORM, SQS, logs, métricas, auth adapters) ─┤──► a
 | [ADR-008](docs/adr/0008-out-of-order-reference-policy.md) | Referências fora de ordem: `PENDING_REFERENCE` com backoff 1–60 s, 12 tentativas / TTL 15 min; varredura sem `SKIP LOCKED` (conferência sob o lock da wallet) | Aceita | Mensageria e falhas, Correção financeira |
 | [ADR-009](docs/adr/0009-observability.md) | Logs estruturados (pino, só identificadores) e catálogo de métricas Prometheus com cardinalidade limitada | Aceita | Observabilidade |
 | [ADR-011](docs/adr/0011-bounded-retention-inbox-outbox.md) | Retenção limitada de inbox (7 d) e outbox publicada (72 h) em lotes; pendentes nunca apagados | Aceita | Mensageria e falhas |
-| [ADR-012](docs/adr/0012-periodic-reconciliation-detect-not-correct.md) | Reconciliação periódica de todas as wallets em snapshot `REPEATABLE READ`, uma instância por vez (advisory lock); detecta e não corrige | Aceita | Correção financeira, Observabilidade |
+| [ADR-012](docs/adr/0012-periodic-reconciliation-detect-not-correct.md) | Reconciliação periódica de todas as wallets em snapshots `REPEATABLE READ` curtos por lote, uma instância por vez (advisory lock); detecta e não corrige | Aceita | Correção financeira, Observabilidade |
 | [ADR-013](docs/adr/0013-spec-first-openapi-contract.md) | Contrato OpenAPI 3.1 *spec-first* com teste de paridade rotas × spec | **Proposta** | Documentação |
 
 **Backlog de ADRs** (números reservados; serão registrados conforme a implementação
@@ -94,7 +94,7 @@ avançar):
 
 | # | Tema | Quando |
 |---|---|---|
-| ADR-010 | Estratégia de testes multi-processo e injeção de falhas | Passo 6 |
+| ADR-010 | Estratégia de testes multi-processo e injeção de falhas | Suíte de concorrência |
 
 Template para novos registros: [`docs/adr/template.md`](docs/adr/template.md).
 ADRs aceitos não são editados no mérito; uma mudança de decisão gera um novo ADR que
@@ -210,13 +210,13 @@ Erros de contrato (não persistidos) usam `code` na resposta HTTP e no atributo
 
 | Área (pts) | Onde é atendida |
 |---|---|
-| Correção financeira (20) | ADR-001; §4 e §5 deste documento; reconciliação (Plano, Passo 5) |
-| Concorrência (20) | ADR-002; testes multi-processo (Plano, Passo 6) |
+| Correção financeira (20) | ADR-001; §4 e §5 deste documento; reconciliação sob demanda e periódica (ADR-012, §9) |
+| Concorrência (20) | ADR-002; `test/concurrency/` (paralelismo real e multi-processo) |
 | Idempotência (15) | ADR-003; teste 50× paralelo |
 | Mensageria e falhas (15) | ADR-004; matriz de recuperação; testes de crash |
 | Modelagem e arquitetura (10) | Camadas (§2), ADR-005, invariantes encapsuladas (§4) |
-| Testes (10) | Plano, Passos 1–6 (unidade, integração real, concorrência real) |
-| Observabilidade (5) | Plano, Passos 4–5; futuro ADR-009 |
+| Testes (10) | `test/unit`, `test/integration` (PostgreSQL e LocalStack reais), `test/concurrency` |
+| Observabilidade (5) | ADR-009; logs JSON com `correlationId`, `/metrics`, `/health/live` e `/health/ready` (§9) |
 | Documentação (5) | Este documento, ADRs, `README.md` |
 
 ## 8. Limitações conhecidas (consolidado)
@@ -234,3 +234,36 @@ Erros de contrato (não persistidos) usam `code` na resposta HTTP e no atributo
 - Risco de compatibilidade Bun × MikroORM mitigado por smoke test e fallback (ADR-005).
 - API sem autenticação/autorização e sem rate limiting (ADR-006).
 - Ledger de partida simples (double-entry é diferencial opcional, não adotado).
+- Contrato OpenAPI (ADR-013) não entregue: o contrato HTTP está documentado no `README.md`
+  e coberto por testes de integração; o ADR permanece **Proposta**.
+- Consultas (`GET`) leem fora de transação, sem lock: refletem o último commit.
+
+## 9. Camada HTTP e reconciliação
+
+- **Pipeline:** middleware de correlação (`X-Correlation-Id` ou UUIDv7) → `ProviderAuthGuard`
+  no-op → controller (valida com `zod` estrito e chama **o mesmo** use case do SQS) →
+  `ApplicationExceptionFilter`, o único ponto que traduz erros para HTTP (ADR-003 §5, ADR-007 §3).
+- **Controllers sem regra de negócio:** dependem de casos de uso e portas, nunca de MikroORM,
+  SQS ou prom-client; a composição fica em `main.ts` (`createHttpApp` é reutilizado pelos testes).
+- **Respostas de leitura** (`application/views.ts`) são iguais para o `POST` e os `GET` de
+  transação, exceto `idempotentReplay`. Em `PENDING_REFERENCE` e nas rejeições sem saldo
+  divulgável (ADR-007) `balance` é `null`.
+- **Ledger paginado:** keyset por `wallet_version` (cursor `base64url({"v":n})`), estável sob
+  inserções concorrentes porque o ledger é append-only com versão crescente e `UNIQUE (wallet_id, wallet_version)`.
+- **Reconciliação** (ADR-012): `REPEATABLE READ READ ONLY`; `calculatedBalance = Σ CREDIT − Σ DEBIT`
+  em `NUMERIC`, continuidade da corrente por `LAG`, `version = último wallet_version` (ledger
+  vazio: só versão 1 com saldo zero).
+  `difference = stored − calculated` (pode ser negativa). Divergência ⇒ log `error`,
+  `wallet_reconciliation_divergences_total`, `consistent: false`; **nunca** corrige. A varredura
+  periódica usa `pg_try_advisory_xact_lock` numa transação externa sem snapshot e audita cada
+  lote por keyset em seu próprio snapshot curto (não retém o `xmin horizon`).
+- **Identidade e autorização** (ADR-006): com identidade verificada, o guard exige
+  `identity.providerId` igual ao `providerId` da rota/corpo e a leitura por id interno compara
+  com o dono da transação (`403 PROVIDER_IDENTITY_MISMATCH`). O adapter no-op não restringe.
+- **`FAILED`** (ADR-007) é reservado a erro permanente de infraestrutura sobre transação já
+  persistida e responde `500`; hoje as falhas permanentes de entrada SQS vão direto à DLQ
+  sem persistir transação (ADR-004), portanto nenhum caminho o produz ainda.
+- **Readiness:** `SELECT 1` no PostgreSQL e `GetQueueAttributes` no SQS, cada um com prazo
+  de 2 s; `503` indica qual dependência caiu. Liveness não toca em dependências.
+- **Entradas defensivas:** `NUL` em strings é rejeitado como `400` (o PostgreSQL não o aceita
+  em `text`; sem isso seria `500`); `amount` numérico e campos desconhecidos também.

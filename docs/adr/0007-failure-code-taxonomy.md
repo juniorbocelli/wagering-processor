@@ -3,6 +3,8 @@
 - **Status:** Aceita
 - **Data:** 2026-10-21
 - **Relacionados:** ADR-003, ADR-004
+- **Revisão:** 2026-10-22 — `FAILED` responde HTTP `500` (falha de infraestrutura, não regra de negócio; `422` fica só para `REJECTED`) e `PROVIDER_IDENTITY_MISMATCH` (`403`) entra no catálogo de `code` de contrato
+- **Revisão:** 2026-10-22 — catálogo de `code` de contrato ampliado (aditivo) com os erros da API HTTP: `TRANSACTION_NOT_FOUND`, `NOT_FOUND`, `PAYLOAD_TOO_LARGE`, `REQUEST_REJECTED`, `INTERNAL_ERROR`
 - **Edital:** §6.3, §7, §9 (Status HTTP), §10, §11, §14 (Correção financeira — 20 pts; Idempotência — 15 pts; Mensageria e falhas — 15 pts)
 
 ---
@@ -64,6 +66,10 @@ define o código; as demais não são avaliadas.
 |---|---|---|
 | `VALIDATION_ERROR` | 400 | DLQ (permanente) |
 | `WALLET_NOT_FOUND` | 404 | DLQ (permanente) |
+| `TRANSACTION_NOT_FOUND` | 404 (consultas) | — |
+| `NOT_FOUND` | 404 (rota inexistente) | — |
+| `PAYLOAD_TOO_LARGE` / `REQUEST_REJECTED` | 413 / outro 4xx do transporte | — |
+| `INTERNAL_ERROR` | 500 (erro não classificado; sem detalhes no corpo) | retry (transitório, ADR-004 §3) |
 | `WALLET_ALREADY_EXISTS` | 409 | — |
 | `IDEMPOTENCY_KEY_REUSED` | 409 | DLQ (permanente) |
 | `EXTERNAL_TRANSACTION_ID_REUSED` | 409 | DLQ (permanente) |
