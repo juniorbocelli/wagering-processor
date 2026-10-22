@@ -11,8 +11,8 @@
     "dev": "bun --watch src/main.ts",
     "start": "bun src/main.ts",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint \"{src,tests}/**/*.ts\"",
-    "lint:fix": "eslint \"{src,tests}/**/*.ts\" --fix",
+    "lint": "eslint \"{src,test}/**/*.ts\"",
+    "lint:fix": "eslint \"{src,test}/**/*.ts\" --fix",
     "check:money": "bun scripts/check-money.ts",
     "infra:up": "docker compose up -d --wait postgres localstack",
     "infra:down": "docker compose down -v",
@@ -24,6 +24,7 @@
     "test:unit": "bun test test/unit",
     "test:integration": "bun test test/integration",
     "test:concurrency": "bun test test/concurrency",
+    "test:load": "bun test/load/run.ts",
     "test:all": "bun run test:unit && bun run test:integration && bun run test:concurrency"
   },
   "dependencies": {
