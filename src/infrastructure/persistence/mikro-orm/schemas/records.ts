@@ -14,7 +14,7 @@ export interface WalletRecord {
   playerId: string;
   currency: string;
   balanceAmount: string;
-  version: number; // check-money:allow
+  version: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -25,7 +25,7 @@ export interface WagerTransactionRecord {
   externalTransactionId: string;
   idempotencyKey: string;
   payloadHash: string;
-  payloadHashVersion: number; // check-money:allow
+  payloadHashVersion: number;
   walletId: string;
   playerId: string;
   roundId: string;
@@ -38,7 +38,7 @@ export interface WagerTransactionRecord {
   status: string;
   failureCode: string | null;
   resultBalanceAmount: string | null;
-  referenceAttempts: number; // check-money:allow
+  referenceAttempts: number;
   nextReferenceAttemptAt: Date | null;
   correlationId: string;
   createdAt: Date;
@@ -54,7 +54,7 @@ export interface LedgerEntryRecord {
   amount: string;
   balanceBefore: string;
   balanceAfter: string;
-  walletVersion: number; // check-money:allow
+  walletVersion: number;
   createdAt: Date;
 }
 
@@ -70,10 +70,10 @@ export interface OutboxRecord {
   id: string;
   aggregateId: string;
   eventType: string;
-  eventVersion: number; // check-money:allow
+  eventVersion: number;
   payload: Record<string, unknown>;
   occurredAt: Date;
-  attempts: number; // check-money:allow
+  attempts: number;
   nextAttemptAt: Date;
   lockedUntil: Date | null;
   lockedBy: string | null;

@@ -198,7 +198,7 @@ export class MikroOrmInboxRepository implements InboxRepository {
 
   async insertIfAbsent(message: InboxMessage): Promise<boolean> {
     const record = inboxMapper.toRecord(message);
-    const result = await this.context.requireTransactional().execute<{ affectedRows: number }>( // check-money:allow
+    const result = await this.context.requireTransactional().execute<{ affectedRows: number }>(
       `INSERT INTO inbox_messages (consumer_name, message_id, payload_hash, received_at, processed_at)
        VALUES (?, ?, ?, ?, ?)
        ON CONFLICT (consumer_name, message_id) DO NOTHING`,

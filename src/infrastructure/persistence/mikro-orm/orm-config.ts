@@ -2,6 +2,7 @@ import { Migrator } from '@mikro-orm/migrations';
 import { defineConfig } from '@mikro-orm/postgresql';
 import { Migration20261020000001_initial } from './migrations/Migration20261020000001_initial.ts';
 import { Migration20261020000002_integrity_triggers } from './migrations/Migration20261020000002_integrity_triggers.ts';
+import { Migration20261021000003_retention_indexes } from './migrations/Migration20261021000003_retention_indexes.ts';
 import { ALL_SCHEMAS } from './schemas/records.ts';
 
 /** Lista explícita (ADR-005 §4): sem descoberta por glob nem snapshot — igual no Bun, no container e nos testes. */
@@ -11,6 +12,7 @@ export const migrationsList = [
     name: 'Migration20261020000002_integrity_triggers',
     class: Migration20261020000002_integrity_triggers,
   },
+  { name: 'Migration20261021000003_retention_indexes', class: Migration20261021000003_retention_indexes },
 ];
 
 export interface OrmConfigOptions {

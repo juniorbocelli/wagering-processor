@@ -1,6 +1,7 @@
 import {
   ConcurrencyConflictError,
   IntegrityViolationError,
+  LockTimeoutError,
   TransientInfrastructureError,
   UniqueViolationError,
 } from '../../../application/errors.ts';
@@ -42,7 +43,7 @@ export function mapDriverError(error: unknown): unknown {
     case '40001':
       return new ConcurrencyConflictError({ cause: error });
     case '55P03':
-      return new TransientInfrastructureError('Timed out waiting for a database lock', { cause: error });
+      return new LockTimeoutError({ cause: error });
     case '57014': // query_canceled (statement_timeout)
     case '57P01': // admin_shutdown
     case '57P02':
