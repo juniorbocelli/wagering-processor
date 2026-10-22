@@ -36,10 +36,27 @@ export interface PayloadHasher {
 }
 
 /**
- * Pontos de falha injetáveis em testes (no-op em produção). O ponto fica **dentro** da
- * transação financeira, para provar a atomicidade.
+ * Pontos de falha injetáveis em testes (no-op em produção). `after_ledger_insert` fica
+ * **dentro** da transação financeira, para provar a atomicidade; os `crash_*` ficam nas
+ * fronteiras de mensageria (depois do commit e antes do ack do SQS; depois de publicar
+ * e antes de marcar a outbox) e simulam a morte do processo.
  */
-export type FaultPoint = 'after_ledger_insert';
+export type FaultPoint =
+  | 'after_ledger_insert'
+  | 'crash_after_commit_before_ack'
+  | 'crash_after_publish_before_mark';
+
+/**
+ * Substituto em-processo da morte do processo: quem a recebe **abandona** o trabalho no
+ * ponto exato (sem ack, sem liberar lease), como se o processo tivesse sido encerrado.
+ * Em execução real o injetor de ambiente mata o processo com `SIGKILL`.
+ */
+export class SimulatedCrashError extends Error {
+  constructor(readonly point: FaultPoint) {
+    super(`simulated crash at ${point}`);
+    this.name = 'SimulatedCrashError';
+  }
+}
 
 export interface FaultInjector {
   trigger(point: FaultPoint): void;

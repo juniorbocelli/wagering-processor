@@ -81,6 +81,13 @@ export class TransientInfrastructureError extends ApplicationError {
   }
 }
 
+/** `55P03`: `lock_timeout` esgotado esperando o lock da wallet. Continua sendo transitório. */
+export class LockTimeoutError extends TransientInfrastructureError {
+  constructor(options?: { cause?: unknown }) {
+    super('Timed out waiting for a database lock', options);
+  }
+}
+
 // ---- erros de driver, já traduzidos pelo adapter de persistência --------------------------
 
 /** `23505`: violação de `UNIQUE`. `constraint` identifica qual (ex.: `uq_wtx_provider_external`). */
