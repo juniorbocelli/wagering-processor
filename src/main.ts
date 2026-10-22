@@ -78,6 +78,7 @@ async function main(): Promise<void> {
       await messaging.stop();
       await reconciliation.stop();
       await orm.close();
+      sqs.destroy();
       logger.info('shutdown complete');
       process.exit(0);
     } catch (error) {

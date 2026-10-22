@@ -24,8 +24,13 @@ export const DEFAULT_OUTBOX_PUBLISHER_OPTIONS: Omit<OutboxPublisherOptions, 'ins
   stuckAttempts: 10,
 };
 
-/** `SendMessageBatch` aceita no máximo 10 entradas. */
-const SQS_BATCH_SIZE = 10;
+/**
+ * Eventos por chamada ao SQS. `SendMessageBatch` aceita e recusa as entradas individualmente:
+ * num lote, o evento *i+1* poderia ser aceito enquanto o *i* é recusado e reenviado depois,
+ * invertendo a ordem por wallet na fila FIFO. Com uma entrada por chamada, uma falha significa
+ * que nada posterior da wallet foi enviado. Wallets distintas seguem em paralelo.
+ */
+const SQS_BATCH_SIZE = 1;
 
 export interface OutboxPublisherDependencies {
   store: OutboxStore;

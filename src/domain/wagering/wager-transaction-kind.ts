@@ -19,3 +19,11 @@ export const WagerTransactionStatus = {
 
 export type WagerTransactionStatus =
   (typeof WagerTransactionStatus)[keyof typeof WagerTransactionStatus];
+
+export function isWagerTransactionKind(value: unknown): value is WagerTransactionKind {
+  return typeof value === 'string' && (Object.values(WagerTransactionKind) as readonly string[]).includes(value);
+}
+
+export function isWagerTransactionStatus(value: unknown): value is WagerTransactionStatus {
+  return typeof value === 'string' && (Object.values(WagerTransactionStatus) as readonly string[]).includes(value);
+}

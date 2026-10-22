@@ -4,11 +4,13 @@ import { WagerTransaction } from '../../../../domain/wagering/wager-transaction.
 import { WalletLedgerEntry } from '../../../../domain/ledger/wallet-ledger-entry.ts';
 import { InboxMessage, InvalidInboxStateError } from '../../../../domain/messaging/inbox-message.ts';
 import { OutboxMessage } from '../../../../domain/messaging/outbox-message.ts';
-import type { FailureCode } from '../../../../domain/wagering/failure-code.ts';
-import type { LedgerDirection } from '../../../../domain/ledger/ledger-direction.ts';
-import type {
-  WagerTransactionKind,
-  WagerTransactionStatus,
+import { isFailureCode, type FailureCode } from '../../../../domain/wagering/failure-code.ts';
+import { isLedgerDirection, type LedgerDirection } from '../../../../domain/ledger/ledger-direction.ts';
+import {
+  isWagerTransactionKind,
+  isWagerTransactionStatus,
+  type WagerTransactionKind,
+  type WagerTransactionStatus,
 } from '../../../../domain/wagering/wager-transaction-kind.ts';
 import type {
   InboxRecord,
@@ -22,6 +24,35 @@ import type {
 const moneyOf = (amount: string, currency: string): Money => Money.rehydrate({ amount, currency });
 
 const orUndefined = <T>(value: T | null): T | undefined => (value === null ? undefined : value);
+
+function parseKind(raw: string): WagerTransactionKind {
+  if (!isWagerTransactionKind(raw)) {
+    throw new Error(`Corrupted WagerTransactionRecord: unknown kind "${raw}"`);
+  }
+  return raw;
+}
+
+function parseStatus(raw: string): WagerTransactionStatus {
+  if (!isWagerTransactionStatus(raw)) {
+    throw new Error(`Corrupted WagerTransactionRecord: unknown status "${raw}"`);
+  }
+  return raw;
+}
+
+function parseFailureCode(raw: string | null): FailureCode | undefined {
+  if (raw === null || raw === undefined) return undefined;
+  if (!isFailureCode(raw)) {
+    throw new Error(`Corrupted WagerTransactionRecord: unknown failureCode "${raw}"`);
+  }
+  return raw;
+}
+
+function parseDirection(raw: string): LedgerDirection {
+  if (!isLedgerDirection(raw)) {
+    throw new Error(`Corrupted LedgerEntryRecord: unknown direction "${raw}"`);
+  }
+  return raw;
+}
 
 export const walletMapper = {
   toDomain(record: WalletRecord): Wallet {
@@ -62,14 +93,14 @@ export const wagerTransactionMapper = {
       playerId: record.playerId,
       roundId: record.roundId,
       gameId: record.gameId,
-      kind: record.kind as WagerTransactionKind,
+      kind: parseKind(record.kind),
       money: moneyOf(record.amount, record.currency),
       referenceExternalTransactionId: orUndefined(record.referenceExternalTransactionId),
       correlationId: record.correlationId,
       createdAt: record.createdAt,
-      status: record.status as WagerTransactionStatus,
+      status: parseStatus(record.status),
       referenceTransactionId: orUndefined(record.referenceTransactionId),
-      failureCode: orUndefined(record.failureCode) as FailureCode | undefined,
+      failureCode: parseFailureCode(record.failureCode),
       resultBalance:
         record.resultBalanceAmount === null
           ? undefined
@@ -115,7 +146,7 @@ export const ledgerEntryMapper = {
       id: record.id,
       walletId: record.walletId,
       transactionId: record.transactionId,
-      direction: record.direction as LedgerDirection,
+      direction: parseDirection(record.direction),
       money: moneyOf(record.amount, record.currency),
       balanceBefore: moneyOf(record.balanceBefore, record.currency),
       balanceAfter: moneyOf(record.balanceAfter, record.currency),

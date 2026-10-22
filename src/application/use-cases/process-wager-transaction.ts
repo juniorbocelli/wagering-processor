@@ -21,7 +21,7 @@ import { DomainError } from '../../domain/shared/domain-error.ts';
 import { Money, type MoneyProps } from '../../domain/money/money.ts';
 import { InboxMessage } from '../../domain/messaging/inbox-message.ts';
 import { WagerTransaction } from '../../domain/wagering/wager-transaction.ts';
-import { WagerTransactionKind } from '../../domain/wagering/wager-transaction-kind.ts';
+import { isWagerTransactionKind, WagerTransactionKind } from '../../domain/wagering/wager-transaction-kind.ts';
 import type { WagerSettlement } from './wager-settlement.ts';
 
 /** Comando de entrada, idêntico para HTTP e SQS. Validado aqui, não nos controladores. */
@@ -54,6 +54,7 @@ export type ProcessWagerTransactionResult =
 
 interface Prepared {
   command: ProcessWagerTransactionCommand;
+  kind: WagerTransactionKind;
   money: Money;
   referenceExternalTransactionId: string | undefined;
   payloadHash: string;
@@ -213,11 +214,14 @@ export class ProcessWagerTransactionUseCase {
     if (typeof command.walletId !== 'string' || !UUID_PATTERN.test(command.walletId)) {
       violations.push({ field: 'walletId', message: 'must be a UUID' });
     }
-    const kind = command.kind;
-    if (!(Object.values(WagerTransactionKind) as string[]).includes(kind)) {
-      violations.push({ field: 'kind', message: `Unknown kind "${String(kind)}"` });
-    } else if (kind === WagerTransactionKind.Opening) {
+    const rawKind = command.kind;
+    let kind: WagerTransactionKind | undefined;
+    if (!isWagerTransactionKind(rawKind)) {
+      violations.push({ field: 'kind', message: `Unknown kind "${String(rawKind)}"` });
+    } else if (rawKind === WagerTransactionKind.Opening) {
       violations.push({ field: 'kind', message: 'OPENING is internal and cannot be submitted' });
+    } else {
+      kind = rawKind;
     }
 
     let money: Money | undefined;
@@ -228,30 +232,42 @@ export class ProcessWagerTransactionUseCase {
     }
 
     const reference = command.referenceExternalTransactionId ?? undefined;
-    if (reference !== undefined) {
-      if (!REFERENCING_KINDS.includes(kind)) {
-        violations.push({ field: 'referenceExternalTransactionId', message: `${kind} cannot carry a reference` });
-      } else if (reference.trim().length === 0) {
-        violations.push({ field: 'referenceExternalTransactionId', message: 'must not be blank' });
-      } else if (reference === command.externalTransactionId) {
-        violations.push({ field: 'referenceExternalTransactionId', message: 'must not reference itself' });
+    if (kind !== undefined) {
+      if (reference !== undefined) {
+        if (!REFERENCING_KINDS.includes(kind)) {
+          violations.push({ field: 'referenceExternalTransactionId', message: `${kind} cannot carry a reference` });
+        } else if (reference.trim().length === 0) {
+          violations.push({ field: 'referenceExternalTransactionId', message: 'must not be blank' });
+        } else if (reference === command.externalTransactionId) {
+          violations.push({ field: 'referenceExternalTransactionId', message: 'must not reference itself' });
+        }
+      } else if (kind === WagerTransactionKind.Refund || kind === WagerTransactionKind.Rollback) {
+        violations.push({
+          field: 'referenceExternalTransactionId',
+          message: `${kind} requires referenceExternalTransactionId`,
+        });
       }
     }
 
     // Toda a validação estrutural do agregado (campos em branco, valor, referência
     // obrigatória) é a do próprio domínio: constrói-se um candidato descartável.
-    if (violations.length === 0 && money !== undefined) {
+    if (violations.length === 0 && money !== undefined && kind !== undefined) {
       try {
-        this.newTransaction(command, money, reference, 'x'.repeat(64), 1, 'validation', new Date(0));
+        this.newTransaction(command, kind, money, reference, 'x'.repeat(64), 1, 'validation', new Date(0));
       } catch (error) {
         if (error instanceof DomainError) {
-          violations.push({ field: 'body', message: error.message });
+          const field = error.message.toLowerCase().includes('reference')
+            ? 'referenceExternalTransactionId'
+            : error.message.toLowerCase().includes('amount') || error.message.toLowerCase().includes('money')
+              ? 'money'
+              : 'body';
+          violations.push({ field, message: error.message });
         } else {
           throw error;
         }
       }
     }
-    if (violations.length > 0 || money === undefined) {
+    if (violations.length > 0 || money === undefined || kind === undefined) {
       throw new ValidationError(violations);
     }
 
@@ -266,11 +282,19 @@ export class ProcessWagerTransactionUseCase {
       money: money.toJSON(),
       referenceExternalTransactionId: reference,
     });
-    return { command, money, referenceExternalTransactionId: reference, payloadHash: hash, payloadHashVersion: version };
+    return {
+      command,
+      kind,
+      money,
+      referenceExternalTransactionId: reference,
+      payloadHash: hash,
+      payloadHashVersion: version,
+    };
   }
 
   private newTransaction(
     command: ProcessWagerTransactionCommand,
+    kind: WagerTransactionKind,
     money: Money,
     reference: string | undefined,
     payloadHash: string,
@@ -289,7 +313,7 @@ export class ProcessWagerTransactionUseCase {
       playerId: command.playerId,
       roundId: command.roundId,
       gameId: command.gameId,
-      kind: command.kind as WagerTransactionKind,
+      kind,
       money,
       referenceExternalTransactionId: reference,
       correlationId,
@@ -361,6 +385,7 @@ export class ProcessWagerTransactionUseCase {
     // d–h. regras de domínio e persistência atômica
     const transaction = this.newTransaction(
       command,
+      prepared.kind,
       prepared.money,
       prepared.referenceExternalTransactionId,
       prepared.payloadHash,

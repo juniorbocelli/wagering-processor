@@ -15,7 +15,8 @@ const text = (max: number) => // check-money:allow
     .string()
     .min(1)
     .max(max)
-    .refine((value) => !value.includes(NUL), 'must not contain NUL characters');
+    .refine((value) => !value.includes(NUL), 'must not contain NUL characters')
+    .refine((value) => value.trim().length > 0, 'must be a non-blank string');
 
 /** `amount` precisa ser string: um número JSON (`25.0`) é rejeitado já na fronteira (§5.1). */
 const moneySchema = z.strictObject({ amount: z.string(), currency: z.string() });

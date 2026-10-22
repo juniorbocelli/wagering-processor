@@ -79,8 +79,11 @@ export class Wallet {
 
   static open(props: OpenWalletProps): OpenedWallet {
     const { playerId, initialBalance } = props;
-    if (playerId.length < 1 || playerId.length > PLAYER_ID_MAX) {
-      throw new InvalidWalletError(`playerId must have 1 to ${PLAYER_ID_MAX} characters`);
+    if (playerId.length < 1 || playerId.length > PLAYER_ID_MAX || playerId.trim().length === 0) {
+      throw new InvalidWalletError(`playerId must have 1 to ${PLAYER_ID_MAX} characters and be non-blank`);
+    }
+    if (playerId.includes('\u0000')) {
+      throw new InvalidWalletError('playerId must not contain NUL characters');
     }
     if (initialBalance.isNegative()) {
       throw new InvalidWalletError('Initial balance must not be negative');

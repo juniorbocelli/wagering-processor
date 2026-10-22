@@ -24,6 +24,15 @@ import {
   WalletBalanceChanged,
 } from '../../domain/events/wager-events.ts';
 
+export type ReferenceVerdict =
+  | 'REFERENCE_SCOPE_MISMATCH'
+  | 'REFERENCE_KIND_NOT_ALLOWED'
+  | 'REFERENCE_NOT_PROCESSED'
+  | 'REFERENCE_ALREADY_REVERSED'
+  | 'AMOUNT_MISMATCH'
+  | 'WAIT'
+  | undefined;
+
 export interface SettlementDependencies {
   wallets: WalletRepository;
   transactions: WagerTransactionRepository;
@@ -186,7 +195,7 @@ export class WagerSettlement {
   private async checkReference(
     tx: WagerTransaction,
     reference: WagerTransaction,
-  ): Promise<'REFERENCE_SCOPE_MISMATCH' | 'REFERENCE_KIND_NOT_ALLOWED' | 'REFERENCE_NOT_PROCESSED' | 'REFERENCE_ALREADY_REVERSED' | 'AMOUNT_MISMATCH' | 'WAIT' | undefined> {
+  ): Promise<ReferenceVerdict> {
     const sameScope =
       reference.providerId === tx.providerId &&
       reference.playerId === tx.playerId &&
