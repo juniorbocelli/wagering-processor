@@ -111,6 +111,11 @@ export function buildUnitHarness() {
     findByTransactionId: async (id) => store.ledger.find((e) => e.transactionId === id) ?? null,
     listByWallet: async (walletId) =>
       store.ledger.filter((e) => e.walletId === walletId).sort((a, b) => a.walletVersion - b.walletVersion),
+    listPage: async (walletId, afterVersion, limit) =>
+      store.ledger
+        .filter((e) => e.walletId === walletId && e.walletVersion > afterVersion)
+        .sort((a, b) => a.walletVersion - b.walletVersion)
+        .slice(0, limit),
   };
 
   const inbox: InboxRepository = {

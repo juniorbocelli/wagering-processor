@@ -647,6 +647,15 @@ describe('command validation', () => {
     ).toContain('referenceExternalTransactionId');
   });
   test('blank identifiers', async () => {
-    expect(await violations({ roundId: '  ' })).toContain('body');
+    expect(await violations({ roundId: '  ' })).toContain('roundId');
+  });
+  test('oversized or NUL-bearing opaque text is a permanent validation error, not a DB error', async () => {
+    expect(await violations({ providerId: 'p'.repeat(65) })).toContain('providerId');
+    expect(await violations({ externalTransactionId: 'e'.repeat(129) })).toContain('externalTransactionId');
+    expect(await violations({ gameId: 'g\u0000x' })).toContain('gameId');
+    expect(await violations({ idempotencyKey: 'k'.repeat(256) })).toContain('idempotencyKey');
+    expect(
+      await violations({ kind: 'WIN', referenceExternalTransactionId: 'r'.repeat(129) }),
+    ).toContain('referenceExternalTransactionId');
   });
 });
