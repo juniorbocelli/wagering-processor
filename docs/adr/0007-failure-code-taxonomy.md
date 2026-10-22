@@ -109,3 +109,10 @@ define o código; as demais não são avaliadas.
 
 - Um código por transação: violações secundárias não são reportadas.
 - Os textos "Provedor deve" são orientação, não parte do contrato de máquina.
+- `WALLET_PLAYER_MISMATCH` e `CURRENCY_MISMATCH` são persistidos **sem** saldo observado
+  (`result_balance_amount = NULL`): no primeiro o saldo pertence a outro jogador (não pode
+  ser divulgado) e no segundo não existe saldo na moeda da transação. As demais rejeições
+  registram o saldo vigente.
+- Aceitam `referenceExternalTransactionId`: `WIN`, `LOSS` (opcional, só referenciam `BET`),
+  `REFUND` e `ROLLBACK` (obrigatório). `BET` com referência é erro de validação
+  (`VALIDATION_ERROR`), assim como uma transação que referencia a si mesma.

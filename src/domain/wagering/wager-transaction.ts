@@ -84,6 +84,7 @@ export interface CreateOpeningTransactionProps {
 /** Tipos de referência aceitos por cada kind (regra §7.3 e WIN com referência opcional). */
 const ALLOWED_REFERENCE_KINDS: Readonly<Record<string, readonly WagerTransactionKind[]>> = {
   [WagerTransactionKind.Win]: [WagerTransactionKind.Bet],
+  [WagerTransactionKind.Loss]: [WagerTransactionKind.Bet],
   [WagerTransactionKind.Refund]: [WagerTransactionKind.Bet],
   [WagerTransactionKind.Rollback]: [
     WagerTransactionKind.Bet,

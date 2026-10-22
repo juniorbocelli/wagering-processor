@@ -14,12 +14,7 @@ export interface UnitOfWork {
 }
 
 /** Violação de escrita concorrente detectada pelo `UPDATE … WHERE version = ?` (defesa secundária). */
-export class StaleAggregateError extends Error {
-  constructor(aggregate: string, id: string) {
-    super(`${aggregate} ${id} was modified concurrently`);
-    this.name = 'StaleAggregateError';
-  }
-}
+export { StaleAggregateError } from '../errors.ts';
 
 export interface WalletRepository {
   /** `SELECT … FOR UPDATE` (ADR-002): primeira leitura da wallet na transação. */
@@ -42,6 +37,17 @@ export interface WagerTransactionRepository {
     idempotencyKey: string,
     externalTransactionId: string,
   ): Promise<WagerTransaction[]>;
+  /**
+   * Transações `PENDING_REFERENCE` da wallet que aguardam `referenceExternalTransactionId`,
+   * da mais antiga para a mais nova (resolvidas sob o lock da wallet).
+   */
+  listPendingByReference(
+    walletId: string,
+    providerId: string,
+    referenceExternalTransactionId: string,
+  ): Promise<WagerTransaction[]>;
+  /** Já existe `REFUND`/`ROLLBACK` `PROCESSED` revertendo esta transação? (regra §7.4) */
+  existsProcessedReversalOf(referenceTransactionId: string): Promise<boolean>;
 }
 
 export interface LedgerRepository {
@@ -54,6 +60,8 @@ export interface LedgerRepository {
 export interface InboxRepository {
   /** `INSERT … ON CONFLICT DO NOTHING`; `false` se já existia (entrega duplicada). */
   insertIfAbsent(message: InboxMessage): Promise<boolean>;
+  /** Hash gravado para `(consumerName, messageId)`; `null` se ausente. */
+  findPayloadHash(consumerName: string, messageId: string): Promise<string | null>;
 }
 
 export interface OutboxRepository {
