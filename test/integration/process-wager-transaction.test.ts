@@ -338,6 +338,7 @@ describe('out-of-order references (PostgreSQL real)', () => {
     const pending = txOf(await run(command));
     expect(pending.status).toBe('PENDING_REFERENCE');
 
+    await new Promise((resolve) => setTimeout(resolve, 1_100)); // reprocess só atua quando vencida (1 s da política padrão)
     const result = await impatient.reprocessPendingReference.execute(pending.id);
     expect(result.kind).toBe('reprocessed');
     const [row] = await sql<{ status: string; failure_code: string }>(app, 'SELECT status, failure_code FROM wager_transactions WHERE id = ?', [pending.id]);

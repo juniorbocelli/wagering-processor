@@ -1,6 +1,6 @@
 import { expect } from 'bun:test';
 import type { MikroORM } from '@mikro-orm/postgresql';
-import type { FaultInjector, FaultPoint } from '../../src/application/ports/runtime.ts';
+import { SimulatedCrashError, type FaultInjector, type FaultPoint } from '../../src/application/ports/runtime.ts';
 import { sql } from './db.ts';
 
 /**
@@ -60,5 +60,18 @@ export class ThrowingFaultInjector implements FaultInjector {
     if (this.armed.delete(point)) {
       throw new Error(`injected fault at ${point}`);
     }
+  }
+}
+
+/** Simula a morte do processo (uma vez) no ponto armado: quem a recebe abandona o trabalho. */
+export class CrashOnceFaultInjector implements FaultInjector {
+  private armed = new Set<FaultPoint>();
+
+  arm(point: FaultPoint): void {
+    this.armed.add(point);
+  }
+
+  trigger(point: FaultPoint): void {
+    if (this.armed.delete(point)) throw new SimulatedCrashError(point);
   }
 }

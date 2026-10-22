@@ -142,7 +142,7 @@ export function buildUnitHarness() {
     ids,
     process: new ProcessWagerTransactionUseCase({ uow, wallets, transactions, inbox, settlement, hasher, clock, ids }),
     openWallet: new OpenWalletUseCase({ uow, wallets, transactions, ledger, outbox, hasher, clock, ids }),
-    reprocess: new ReprocessPendingReferenceUseCase({ uow, wallets, transactions, settlement }),
+    reprocess: new ReprocessPendingReferenceUseCase({ uow, wallets, transactions, settlement, clock }),
     eventTypes: () => store.outbox.map((m) => m.eventType),
   };
 }

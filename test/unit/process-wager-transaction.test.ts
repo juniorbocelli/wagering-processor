@@ -493,6 +493,7 @@ describe('out-of-order references (§7.1)', () => {
       ),
     );
     for (let i = 0; i < 12 && refund.status === 'PENDING_REFERENCE'; i += 1) {
+      h.clock.advance(60_000); // vence o backoff (teto de 60 s) sem alcançar o TTL de 15 min
       await h.reprocess.execute(refund.id);
     }
     expect(refund.status).toBe('REJECTED');
