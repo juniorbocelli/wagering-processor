@@ -21,11 +21,3 @@ export class CurrencyMismatchError extends DomainError {
   }
 }
 
-/** Moeda bem formada, porém fora da allowlist configurada. */
-export class UnsupportedCurrencyError extends DomainError {
-  readonly code = 'UNSUPPORTED_CURRENCY';
-
-  constructor(readonly currency: string) {
-    super(`Unsupported currency: ${currency}`);
-  }
-}

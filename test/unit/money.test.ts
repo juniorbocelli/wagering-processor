@@ -59,6 +59,15 @@ describe('Money.from — parsing', () => {
     expect(() => Money.from({ amount: '1.00', currency })).toThrow(InvalidMoneyError);
   });
 
+  test.each(['BRL', 'USD', 'EUR', 'GBP', 'CAD', 'JPY', 'CHF'])(
+    'accepts valid ISO-4217 currency "%s"',
+    (currency) => {
+      const m = Money.from({ amount: '10.00', currency });
+      expect(m.currency as string).toBe(currency);
+      expect(m.toJSON()).toEqual({ amount: '10.00', currency });
+    },
+  );
+
   test('boundaries: largest accepted and first rejected', () => {
     expect(brl('99999999999999999.99').toString()).toBe('99999999999999999.99');
     expect(() => brl('100000000000000000.00')).toThrow(InvalidMoneyError);
