@@ -122,7 +122,7 @@
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
             <div>
               <label>Operação</label>
-              <select id="txKind">
+              <select id="txKind" onchange="toggleReferenceField()">
                 <option value="BET">BET (Débito)</option>
                 <option value="WIN">WIN (Crédito)</option>
                 <option value="LOSS">LOSS (Informativo)</option>
@@ -134,6 +134,10 @@
               <label>Valor (BRL)</label>
               <input type="text" id="txAmount" value="25.00" placeholder="25.00" />
             </div>
+          </div>
+          <div id="referenceField" style="display: none; margin-top: 10px;">
+            <label>Transação Referenciada (Obrigatório para REFUND / ROLLBACK)</label>
+            <input type="text" id="txReferenceId" placeholder="ex: tx-original-bet-uuid" />
           </div>
           <label>Idempotency-Key</label>
           <input type="text" id="txIdempotencyKey" placeholder="Deixe em branco para gerar aleatória" />
@@ -244,14 +248,24 @@
       `).join('');
     }
 
+    function toggleReferenceField() {
+      const val = document.getElementById('txKind').value;
+      const field = document.getElementById('referenceField');
+      if (field) field.style.display = (val === 'REFUND' || val === 'ROLLBACK') ? 'block' : 'none';
+    }
+
     async function submitTransaction(e, customPayload = null, customKey = null) {
       if (e) e.preventDefault();
       if (!currentWallet) await openNewWallet("100.00");
 
       const rawAmount = customPayload ? customPayload.money.amount : document.getElementById('txAmount').value;
       const amount = (rawAmount || '').trim().replace(',', '.');
-      const key = customKey || document.getElementById('txIdempotencyKey').value.trim() || 'idem-' + crypto.randomUUID();
+      const isManualForm = !customPayload && !customKey;
+
+      const inputKey = document.getElementById('txIdempotencyKey').value.trim();
+      const key = customKey || inputKey || 'idem-' + crypto.randomUUID();
       const kind = customPayload ? customPayload.kind : (document.getElementById('txKind')?.value || 'BET');
+      const refId = customPayload ? customPayload.referenceExternalTransactionId : document.getElementById('txReferenceId')?.value.trim();
 
       const payload = customPayload || {
         providerId: 'provider-studio',
@@ -261,11 +275,17 @@
         roundId: 'round-1',
         gameId: 'fortune-chimp',
         kind: kind,
-        money: { amount: amount, currency: 'BRL' }
+        money: { amount: amount, currency: 'BRL' },
+        ...(refId ? { referenceExternalTransactionId: refId } : {})
       };
 
       lastRequest = { payload, key };
-      document.getElementById('txIdempotencyKey').value = key;
+
+      if (isManualForm && !inputKey) {
+        document.getElementById('txIdempotencyKey').value = '';
+      } else {
+        document.getElementById('txIdempotencyKey').value = key;
+      }
 
       const res = await fetch('/wagering/transactions', {
         method: 'POST',
@@ -308,7 +328,7 @@
           gameId: 'chimp-gold',
           kind: 'BET',
           money: { amount: '25.00', currency: 'BRL' }
-        });
+        }, 'idem-happy-' + crypto.randomUUID());
       } else if (type === 'overdraw') {
         if (!currentWallet) await openNewWallet("100.00");
         await submitTransaction(null, {
@@ -320,7 +340,7 @@
           gameId: 'chimp-gold',
           kind: 'BET',
           money: { amount: '500.00', currency: 'BRL' }
-        });
+        }, 'idem-overdraw-' + crypto.randomUUID());
       } else if (type === 'idempotency') {
         if (!lastRequest) {
           await runScenario('happy');
