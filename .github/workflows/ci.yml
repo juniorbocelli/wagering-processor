@@ -23,13 +23,21 @@ jobs:
         run: bun run typecheck
 
       - name: Lint & check-money
-        run: bun run lint
+        run: |
+          bun run lint
+          bun run check:money
 
       - name: Start infrastructure
         run: bun run infra:up
+
+      - name: Run migrations
+        run: bun run migration:up
 
       - name: Unit tests
         run: bun run test:unit
 
       - name: Integration tests
         run: bun run test:integration
+
+      - name: Concurrency tests
+        run: bun run test:concurrency
