@@ -9,19 +9,18 @@ groups:
           runbook_url: 'docs/runbooks/alerts.md#walletbalancedivergence'
           summary: 'Wallet balances diverge from the ledger'
           description: >-
-            The last full reconciliation found {{ $value }} wallet(s) whose stored balance differs
-            from the wallet ledger or from the double-entry journal. Balances are never corrected
-            automatically: investigate before any manual adjustment.
+            The last full reconciliation found {{ $value }} wallet(s) whose stored balance or version chain differs
+            from the immutable wallet ledger. Balances are never corrected automatically: investigate before any manual adjustment.
 
       - alert: ReconciliationStale
-        expr: time() - max(wallet_reconciliation_last_scan_timestamp_seconds) > 1800
+        expr: time() - max(wallet_reconciliation_last_success_timestamp) > 1800
         for: 5m
         labels:
           severity: warning
         annotations:
           runbook_url: 'docs/runbooks/alerts.md#reconciliationstale'
           summary: 'No full wallet reconciliation in the last 30 minutes'
-          description: 'The reconciliation worker is not completing scans; divergences would go unnoticed.'
+          description: 'The periodic reconciliation worker is not completing scans; divergences would go unnoticed.'
 
   - name: wagering-messaging
     rules:
@@ -46,27 +45,27 @@ groups:
           description: 'Events older than 5 minutes are still unpublished; check SQS and the publisher.'
 
       - alert: OutboxPublishFailures
-        expr: sum(rate(outbox_messages_total{result="failed"}[5m])) > 0
+        expr: sum(rate(outbox_stuck_total[5m])) > 0
         for: 5m
         labels:
           severity: warning
         annotations:
           runbook_url: 'docs/runbooks/alerts.md#outboxpublishfailures'
-          summary: 'Publishing integration events keeps failing'
-          description: 'Outbox publications have been failing for 5 minutes (retried with backoff).'
+          summary: 'Publishing integration events keeps failing past attempt threshold'
+          description: 'Outbox events are exceeding the stuck attempt threshold (retried with backoff).'
 
       - alert: DeadLetterQueueNotEmpty
-        expr: max(sqs_dead_letter_queue_messages) > 0
+        expr: sum(increase(sqs_dlq_messages_total[5m])) > 0
         for: 1m
         labels:
           severity: warning
         annotations:
           runbook_url: 'docs/runbooks/alerts.md#deadletterqueuenotempty'
-          summary: 'Messages waiting in the dead-letter queue'
-          description: '{{ $value }} message(s) in the DLQ need investigation and possibly a redrive.'
+          summary: 'Messages sent to the dead-letter queue'
+          description: '{{ $value }} message(s) were sent to the DLQ and need investigation.'
 
       - alert: SqsRetriesSpiking
-        expr: sum(rate(sqs_message_retries_total[5m])) > 1
+        expr: sum(rate(sqs_retries_total[5m])) > 1
         for: 5m
         labels:
           severity: warning

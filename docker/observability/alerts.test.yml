@@ -24,14 +24,13 @@ tests:
               runbook_url: 'docs/runbooks/alerts.md#walletbalancedivergence'
               summary: 'Wallet balances diverge from the ledger'
               description: >-
-                The last full reconciliation found 1 wallet(s) whose stored balance differs
-                from the wallet ledger or from the double-entry journal. Balances are never corrected
-                automatically: investigate before any manual adjustment.
+                The last full reconciliation found 1 wallet(s) whose stored balance or version chain differs
+                from the immutable wallet ledger. Balances are never corrected automatically: investigate before any manual adjustment.
 
   - name: reconciliation goes stale when no scan completes for 30 minutes
     interval: 1m
     input_series:
-      - series: 'wallet_reconciliation_last_scan_timestamp_seconds{instance="app-1:3000", job="wagering"}'
+      - series: 'wallet_reconciliation_last_success_timestamp{instance="app-1:3000", job="wagering"}'
         values: '0x60'
     alert_rule_test:
       - eval_time: 20m
@@ -45,7 +44,7 @@ tests:
             exp_annotations:
               runbook_url: 'docs/runbooks/alerts.md#reconciliationstale'
               summary: 'No full wallet reconciliation in the last 30 minutes'
-              description: 'The reconciliation worker is not completing scans; divergences would go unnoticed.'
+              description: 'The periodic reconciliation worker is not completing scans; divergences would go unnoticed.'
 
   - name: outbox lag warns after 2 minutes above 30s
     interval: 1m
@@ -66,10 +65,10 @@ tests:
               summary: 'Integration events are being published late'
               description: 'The oldest unpublished outbox event is 45s old.'
 
-  - name: a message in the DLQ fires after one minute
+  - name: a message sent to the DLQ fires after one minute
     interval: 1m
     input_series:
-      - series: 'sqs_dead_letter_queue_messages{instance="app-1:3000", job="wagering"}'
+      - series: 'sqs_dlq_messages_total{error_code="VALIDATION_ERROR", instance="app-1:3000", job="wagering"}'
         values: '0 2 2 2'
     alert_rule_test:
       - eval_time: 1m
@@ -82,8 +81,8 @@ tests:
               severity: warning
             exp_annotations:
               runbook_url: 'docs/runbooks/alerts.md#deadletterqueuenotempty'
-              summary: 'Messages waiting in the dead-letter queue'
-              description: '2 message(s) in the DLQ need investigation and possibly a redrive.'
+              summary: 'Messages sent to the dead-letter queue'
+              description: '2 message(s) were sent to the DLQ and need investigation.'
 
   - name: an instance that stops answering scrapes is reported down
     interval: 1m
@@ -109,9 +108,9 @@ tests:
   - name: sustained rejections above 20% raise a warning
     interval: 1m
     input_series:
-      - series: 'wager_transactions_total{status="PROCESSED", kind="BET", channel="http"}'
+      - series: 'wager_transactions_total{status="PROCESSED", kind="BET"}'
         values: '0+60x20'
-      - series: 'wager_transactions_total{status="REJECTED", kind="BET", channel="http"}'
+      - series: 'wager_transactions_total{status="REJECTED", kind="BET"}'
         values: '0+30x20'
     alert_rule_test:
       - eval_time: 8m
