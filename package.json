@@ -22,6 +22,7 @@
     "migration:status": "bun scripts/migrate.ts status",
     "test": "bun test test/unit",
     "test:unit": "bun test test/unit",
+    "test:property": "bun test test/unit/*.property.test.ts",
     "test:integration": "bun test test/integration",
     "test:concurrency": "bun test test/concurrency",
     "test:load": "bun test/load/run.ts",
