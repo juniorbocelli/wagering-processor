@@ -131,26 +131,26 @@ O sistema conta com três níveis de testes automatizados com cobertura rigorosa
 
 > **Nota sobre integração e readiness:** A suíte `test/integration/http-health.test.ts` pausa temporariamente os contêineres `postgres` e `localstack` via `docker compose pause` para validar a resposta `503` do probe de readiness e os retoma ao final. Não execute comandos paralelos contra a infraestrutura durante essa execução.
 
-### Os 8 Cenários de Concorrência e Tolerância a Falhas (§13 do edital)
+### Os 8 Cenários Obrigatórios de Concorrência e Falhas (§13 do edital)
 
-A suíte `bun run test:concurrency` valida formalmente:
-1. **Duas apostas simultâneas** com saldo suficiente para apenas uma (processamento determinístico e rejeição por saldo insuficiente sem race condition).
-2. **Aposta e ganho simultâneos** na mesma carteira (saldo final aritmeticamente exato e ledger contínuo).
-3. **Replay de idempotência simultâneo** ao processamento original (nenhum duplo débito; retorno fiel de resposta).
-4. **50 requisições simultâneas em paralelo** com a mesma `Idempotency-Key` (exatamente 1 aplicada e 49 replays consistentes).
-5. **Reversão (`ROLLBACK`) chegando antes da aposta (`BET`)** (transita para `PENDING_REFERENCE`, aguarda a aposta chegar e resolve com sucesso).
-6. **Múltiplos workers disputando a fila SQS** (entrega at-least-once deduplicada via inbox atômico).
-7. **Falha de rede durante o processamento** (`SIGKILL` no processo da aplicação no momento exato da escrita; reinício e recuperação sem duplicar lançamentos nem perder eventos).
-8. **Reconciliação sob carga contínua** (auditoria contábil sem interferir nem travar as apostas concorrentes).
+A suíte `bun run test:concurrency` (`cluster-scenarios.test.ts`, `crash-after-commit.test.ts` e `restart-recovery.test.ts`) valida formalmente contra 3 processos reais:
+1. **Mesma aposta enviada 50 vezes em paralelo** (HTTP nas 3 instâncias + SQS) → exatamente 1 `PROCESSED`, 49 replays idempotentes e um único débito no ledger.
+2. **Operações concorrentes disputando o saldo da mesma wallet (§8)** (saldo `100.00 BRL`, duas apostas simultâneas de `80.00 BRL` × 20 rodadas) → 1 `PROCESSED`, 1 `REJECTED (INSUFFICIENT_FUNDS)`, saldo final `20.00 BRL` e 1 débito.
+3. **Wallets distintas processadas em paralelo** (200 carteiras simultâneas) → ausência de lock global e consistência total.
+4. **≥ 3 processos/instâncias simultâneos sob hot wallet** (50 operações mistas `BET`, `WIN`, `LOSS`, `REFUND`, `ROLLBACK` na mesma carteira) → saldo nunca negativo e corrente de versões contínua.
+5. **Worker morto depois do commit e antes do ack** (`SIGKILL` real via `FAULT_INJECTION=crash_after_commit_before_ack`) → redelivery absorvida pela inbox persistente sem duplicar efeitos.
+6. **Múltiplos publishers concorrentes sobre a mesma outbox** → nenhum evento perdido, duplicatas compartilham o mesmo `eventId` e ordem por carteira preservada.
+7. **`REFUND` e `ROLLBACK` entregues antes da referência** → estacionam em `PENDING_REFERENCE` (`202`) e convergem para `PROCESSED` assim que `BET`/`WIN` chegam.
+8. **Reinício abrupto do serviço (`SIGKILL` das 3 instâncias sob carga mista HTTP + SQS)** → recuperação completa após restart, outbox drenada, replays fiéis e reconciliação `consistent: true` em todas as carteiras.
 
 ### Resultados do teste de carga
 
-Medição executada com 3 instâncias da aplicação e 64 clientes concorrentes (detalhes em [`docs/load-test.md`](docs/load-test.md)):
+Medição executada no mesmo host com 3 instâncias da aplicação e 64 clientes concorrentes (relatório completo em [`docs/load-test.md`](docs/load-test.md)):
 
-| Cenário | Throughput | p50 / p95 / p99 | Erros 5xx | Lock timeouts |
-|---|---|---|---|---|
-| Wallets uniformes | 85 req/s | 730 / 1327 / 1680 ms | 0% | 0 |
-| Hot wallet (80% em uma) | 68 req/s | 945 / 2596 / 3176 ms | 0% | 0 |
+| Cenário | Throughput | p50 / p95 / p99 | Erros 5xx | Lock timeouts | Reconciliação |
+|---|---|---|---|---|---|
+| Distribuição uniforme (100 wallets) | 57 req/s | 1160.2 / 2183.4 / 2712.0 ms | 0.00% | 0 | 100% íntegras |
+| Hot wallet (80% em uma wallet) | 49 req/s | 1344.6 / 3029.0 / 3621.1 ms | 0.00% | 0 | 100% íntegras |
 
 ---
 
