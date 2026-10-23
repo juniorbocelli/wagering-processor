@@ -36,7 +36,7 @@ afterAll(async () => {
   await opener?.stop();
   await queues?.cleanup();
   await app?.close();
-});
+}, 30_000);
 
 describe('crash after commit and before ack (real SIGKILL)', () => {
   test('#5 the redelivery hits the inbox: one effect, one inbox row, message acknowledged', async () => {

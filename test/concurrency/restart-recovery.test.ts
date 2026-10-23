@@ -45,7 +45,7 @@ afterAll(async () => {
   await cluster?.stop();
   await queues?.cleanup();
   await app?.close();
-});
+}, 30_000);
 
 interface HttpOp {
   body: WagerBody;

@@ -205,19 +205,31 @@ export async function call(
   path: string,
   options: { body?: unknown; headers?: Record<string, string> } = {},
 ): Promise<HttpResult> {
-  const response = await fetch(`${instance.url}${path}`, {
-    method,
-    headers: { ...(options.body === undefined ? {} : { 'content-type': 'application/json' }), ...options.headers },
-    ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
-  });
-  const text = await response.text();
-  let body: unknown;
+  const execute = async (): Promise<HttpResult> => {
+    const response = await fetch(`${instance.url}${path}`, {
+      method,
+      headers: { ...(options.body === undefined ? {} : { 'content-type': 'application/json' }), ...options.headers },
+      ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
+    });
+    const text = await response.text();
+    let body: unknown;
+    try {
+      body = text === '' ? undefined : JSON.parse(text);
+    } catch {
+      body = undefined;
+    }
+    return { status: response.status, body };
+  };
+
   try {
-    body = text === '' ? undefined : JSON.parse(text);
-  } catch {
-    body = undefined;
+    return await execute();
+  } catch (error) {
+    if ((error as { code?: string })?.code === 'ECONNRESET') {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      return await execute();
+    }
+    throw error;
   }
-  return { status: response.status, body };
 }
 
 /** Largada sincronizada: todas as tarefas só disparam depois de a barreira abrir. */

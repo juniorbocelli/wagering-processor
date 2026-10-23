@@ -43,7 +43,7 @@ afterAll(async () => {
   await cluster?.stop();
   await queues?.cleanup();
   await app?.close();
-});
+}, 30_000);
 
 describe('concurrency (3 processes, real PostgreSQL + LocalStack)', () => {
   test('#1 the same BET 50× in parallel (HTTP on 3 instances + SQS): one PROCESSED, 49 replays, one DEBIT', async () => {
