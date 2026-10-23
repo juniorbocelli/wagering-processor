@@ -202,6 +202,7 @@
       });
       const data = await res.json();
       currentWallet = data;
+      try { localStorage.setItem('wagering_last_wallet_id', data.id); } catch (e) {}
       renderWallet();
       await refreshLedger();
       return data;
@@ -231,10 +232,10 @@
         <div class="ledger-item">
           <div class="ledger-header">
             <span>Versão <strong>#${entry.walletVersion}</strong></span>
-            <span class="${entry.direction === 'CREDIT' ? 'badge-credit' : 'badge-debit'}">${entry.direction} R$ ${entry.money.amount}</span>
+            <span class="${entry.direction === 'CREDIT' ? 'badge-credit' : 'badge-debit'}">${entry.direction} R$ ${(entry.amount || entry.money || {}).amount || '0.00'}</span>
           </div>
           <div style="color: var(--muted); font-size: 11px;">
-            Saldo: R$ ${entry.balanceBefore.amount} → R$ ${entry.balanceAfter.amount}
+            Saldo: R$ ${(entry.balanceBefore || {}).amount || '0.00'} → R$ ${(entry.balanceAfter || {}).amount || '0.00'}
           </div>
           <div style="color: #6b7280; font-size: 10px; margin-top: 4px;">
             Tx: ${entry.transactionId} · ${new Date(entry.createdAt).toLocaleTimeString()}
@@ -247,9 +248,10 @@
       if (e) e.preventDefault();
       if (!currentWallet) await openNewWallet("100.00");
 
-      const kind = customPayload ? customPayload.kind : document.getElementById('txKind').value;
-      const amount = customPayload ? customPayload.money.amount : document.getElementById('txAmount').value;
+      const rawAmount = customPayload ? customPayload.money.amount : document.getElementById('txAmount').value;
+      const amount = (rawAmount || '').trim().replace(',', '.');
       const key = customKey || document.getElementById('txIdempotencyKey').value.trim() || 'idem-' + crypto.randomUUID();
+      const kind = customPayload ? customPayload.kind : (document.getElementById('txKind')?.value || 'BET');
 
       const payload = customPayload || {
         providerId: 'provider-studio',
@@ -280,7 +282,10 @@
         currentWallet.balance = json.balance;
       }
       const walletRes = await fetch('/wallets/' + currentWallet.id);
-      if (walletRes.ok) currentWallet = await walletRes.json();
+      if (walletRes.ok) {
+        currentWallet = await walletRes.json();
+        try { localStorage.setItem('wagering_last_wallet_id', currentWallet.id); } catch (e) {}
+      }
       renderWallet();
       await refreshLedger();
       return { status: res.status, data: json };
@@ -329,6 +334,24 @@
         document.getElementById('responseOutput').textContent = JSON.stringify(json, null, 2);
       }
     }
+
+    async function initConsole() {
+      try {
+        const savedId = localStorage.getItem('wagering_last_wallet_id');
+        if (savedId) {
+          const res = await fetch('/wallets/' + savedId);
+          if (res.ok) {
+            currentWallet = await res.json();
+            renderWallet();
+            await refreshLedger();
+            return;
+          }
+        }
+      } catch (e) {}
+      await runScenario('happy');
+    }
+
+    initConsole();
   </script>
 </body>
 </html>
