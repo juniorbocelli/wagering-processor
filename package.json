@@ -23,7 +23,7 @@
     "test": "bun test test/unit",
     "test:unit": "bun test test/unit",
     "test:property": "bun test test/unit/*.property.test.ts",
-    "test:integration": "bun test test/integration",
+    "test:integration": "bun test test/integration --parallel=1",
     "test:concurrency": "bun test test/concurrency",
     "test:load": "bun test/load/run.ts",
     "test:all": "bun run test:unit && bun run test:integration && bun run test:concurrency",

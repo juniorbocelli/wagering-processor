@@ -57,7 +57,7 @@ const steps: Step[] = [
   },
   {
     name: 'Integration Tests',
-    cmd: ['bun', 'test', 'test/integration'],
+    cmd: ['bun', 'test', 'test/integration', '--parallel=1'],
     needsDocker: true,
   },
   {
