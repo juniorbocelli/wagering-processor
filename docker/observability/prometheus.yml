@@ -1,0 +1,17 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: wagering
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['app-1:3000', 'app-2:3000', 'app-3:3000']
+
+  - job_name: wagering-dev
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['host.docker.internal:3000']
+
+rule_files:
+  - /etc/prometheus/alerts.yml

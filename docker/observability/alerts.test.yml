@@ -1,0 +1,128 @@
+rule_files:
+  - alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  - name: a divergent wallet fires immediately and a clean scan does not
+    interval: 1m
+    input_series:
+      - series: 'wallet_reconciliation_divergent_wallets{instance="app-1:3000", job="wagering"}'
+        values: '0 0 1 1'
+      - series: 'wallet_reconciliation_divergent_wallets{instance="app-2:3000", job="wagering"}'
+        values: '0 0 0 0'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: WalletBalanceDivergence
+        exp_alerts: []
+      - eval_time: 2m
+        alertname: WalletBalanceDivergence
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              runbook_url: 'docs/runbooks/alerts.md#walletbalancedivergence'
+              summary: 'Wallet balances diverge from the ledger'
+              description: >-
+                The last full reconciliation found 1 wallet(s) whose stored balance differs
+                from the wallet ledger or from the double-entry journal. Balances are never corrected
+                automatically: investigate before any manual adjustment.
+
+  - name: reconciliation goes stale when no scan completes for 30 minutes
+    interval: 1m
+    input_series:
+      - series: 'wallet_reconciliation_last_scan_timestamp_seconds{instance="app-1:3000", job="wagering"}'
+        values: '0x60'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: ReconciliationStale
+        exp_alerts: []
+      - eval_time: 40m
+        alertname: ReconciliationStale
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              runbook_url: 'docs/runbooks/alerts.md#reconciliationstale'
+              summary: 'No full wallet reconciliation in the last 30 minutes'
+              description: 'The reconciliation worker is not completing scans; divergences would go unnoticed.'
+
+  - name: outbox lag warns after 2 minutes above 30s
+    interval: 1m
+    input_series:
+      - series: 'outbox_lag_seconds{instance="app-1:3000", job="wagering"}'
+        values: '5 45 45 45 45'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: OutboxLagHigh
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: OutboxLagHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              runbook_url: 'docs/runbooks/alerts.md#outboxlaghigh'
+              summary: 'Integration events are being published late'
+              description: 'The oldest unpublished outbox event is 45s old.'
+
+  - name: a message in the DLQ fires after one minute
+    interval: 1m
+    input_series:
+      - series: 'sqs_dead_letter_queue_messages{instance="app-1:3000", job="wagering"}'
+        values: '0 2 2 2'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: DeadLetterQueueNotEmpty
+        exp_alerts: []
+      - eval_time: 2m
+        alertname: DeadLetterQueueNotEmpty
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              runbook_url: 'docs/runbooks/alerts.md#deadletterqueuenotempty'
+              summary: 'Messages waiting in the dead-letter queue'
+              description: '2 message(s) in the DLQ need investigation and possibly a redrive.'
+
+  - name: an instance that stops answering scrapes is reported down
+    interval: 1m
+    input_series:
+      - series: 'up{instance="app-2:3000", job="wagering"}'
+        values: '1 0 0 0'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: WageringInstanceDown
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: WageringInstanceDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              instance: 'app-2:3000'
+              job: wagering
+            exp_annotations:
+              runbook_url: 'docs/runbooks/alerts.md#wageringinstancedown'
+              summary: 'Instance app-2:3000 is down'
+              description: 'Prometheus cannot scrape app-2:3000 for more than a minute.'
+
+  - name: sustained rejections above 20% raise a warning
+    interval: 1m
+    input_series:
+      - series: 'wager_transactions_total{status="PROCESSED", kind="BET", channel="http"}'
+        values: '0+60x20'
+      - series: 'wager_transactions_total{status="REJECTED", kind="BET", channel="http"}'
+        values: '0+30x20'
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: RejectionRateHigh
+        exp_alerts: []
+      - eval_time: 16m
+        alertname: RejectionRateHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              runbook_url: 'docs/runbooks/alerts.md#rejectionratehigh'
+              summary: 'More than 20% of transactions are being rejected'
+              description: 'Business rejections are valid outcomes, but a sustained spike usually means a provider integration problem.'

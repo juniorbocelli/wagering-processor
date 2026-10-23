@@ -1,0 +1,120 @@
+groups:
+  - name: wagering-correctness
+    rules:
+      - alert: WalletBalanceDivergence
+        expr: max(wallet_reconciliation_divergent_wallets) > 0
+        labels:
+          severity: critical
+        annotations:
+          runbook_url: 'docs/runbooks/alerts.md#walletbalancedivergence'
+          summary: 'Wallet balances diverge from the ledger'
+          description: >-
+            The last full reconciliation found {{ $value }} wallet(s) whose stored balance differs
+            from the wallet ledger or from the double-entry journal. Balances are never corrected
+            automatically: investigate before any manual adjustment.
+
+      - alert: ReconciliationStale
+        expr: time() - max(wallet_reconciliation_last_scan_timestamp_seconds) > 1800
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          runbook_url: 'docs/runbooks/alerts.md#reconciliationstale'
+          summary: 'No full wallet reconciliation in the last 30 minutes'
+          description: 'The reconciliation worker is not completing scans; divergences would go unnoticed.'
+
+  - name: wagering-messaging
+    rules:
+      - alert: OutboxLagHigh
+        expr: max(outbox_lag_seconds) > 30
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          runbook_url: 'docs/runbooks/alerts.md#outboxlaghigh'
+          summary: 'Integration events are being published late'
+          description: 'The oldest unpublished outbox event is {{ $value | humanizeDuration }} old.'
+
+      - alert: OutboxStuck
+        expr: max(outbox_lag_seconds) > 300
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          runbook_url: 'docs/runbooks/alerts.md#outboxstuck'
+          summary: 'Outbox is not draining'
+          description: 'Events older than 5 minutes are still unpublished; check SQS and the publisher.'
+
+      - alert: OutboxPublishFailures
+        expr: sum(rate(outbox_messages_total{result="failed"}[5m])) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          runbook_url: 'docs/runbooks/alerts.md#outboxpublishfailures'
+          summary: 'Publishing integration events keeps failing'
+          description: 'Outbox publications have been failing for 5 minutes (retried with backoff).'
+
+      - alert: DeadLetterQueueNotEmpty
+        expr: max(sqs_dead_letter_queue_messages) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          runbook_url: 'docs/runbooks/alerts.md#deadletterqueuenotempty'
+          summary: 'Messages waiting in the dead-letter queue'
+          description: '{{ $value }} message(s) in the DLQ need investigation and possibly a redrive.'
+
+      - alert: SqsRetriesSpiking
+        expr: sum(rate(sqs_message_retries_total[5m])) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          runbook_url: 'docs/runbooks/alerts.md#sqsretriesspiking'
+          summary: 'SQS messages are failing transiently'
+          description: 'More than one message per second is being released back to the queue.'
+
+  - name: wagering-service
+    rules:
+      - alert: WageringInstanceDown
+        expr: up{job="wagering"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          runbook_url: 'docs/runbooks/alerts.md#wageringinstancedown'
+          summary: 'Instance {{ $labels.instance }} is down'
+          description: 'Prometheus cannot scrape {{ $labels.instance }} for more than a minute.'
+
+      - alert: WagerLatencyHigh
+        expr: histogram_quantile(0.99, sum by (le) (rate(wager_processing_duration_seconds_bucket[5m]))) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          runbook_url: 'docs/runbooks/alerts.md#wagerlatencyhigh'
+          summary: 'p99 wager processing latency above 1s'
+          description: 'p99 is {{ $value | humanizeDuration }} over the last 5 minutes.'
+
+      - alert: WalletLockContention
+        expr: histogram_quantile(0.95, sum by (le) (rate(wallet_lock_wait_seconds_bucket[5m]))) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          runbook_url: 'docs/runbooks/alerts.md#walletlockcontention'
+          summary: 'Requests are queueing on hot wallets'
+          description: 'p95 wait for the per-wallet lock is {{ $value | humanizeDuration }}.'
+
+      - alert: RejectionRateHigh
+        expr: >-
+          sum(rate(wager_transactions_total{status="REJECTED"}[5m]))
+          / sum(rate(wager_transactions_total[5m])) > 0.2
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          runbook_url: 'docs/runbooks/alerts.md#rejectionratehigh'
+          summary: 'More than 20% of transactions are being rejected'
+          description: 'Business rejections are valid outcomes, but a sustained spike usually means a provider integration problem.'
