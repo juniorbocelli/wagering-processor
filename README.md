@@ -80,6 +80,25 @@ curl -s -X POST localhost:3000/wagering/transactions -H 'content-type: applicati
        "kind":"BET","money":{"amount":"25.00","currency":"BRL"}}'
 ```
 
+### Console Operacional e Documentação Interativa
+
+Para demonstrar visualmente e auditar o comportamento da aplicação em tempo real (sem depender de comandos `curl` manuais), a aplicação disponibiliza duas interfaces web públicas nativas:
+
+1. **Console Operacional Autoral ([`http://localhost:3000/console`](http://localhost:3000/console))**:
+   - **Propósito:** Uma bancada operacional interativa (*Operational Workbench*) desenvolvida especificamente para este projeto com design dark Jungle, focada na visualização transparente de invariantes contábeis e execução ao vivo.
+   - **Monitoramento em Tempo Real:** Indicador de status de saúde contínuo checando a conectividade do PostgreSQL e SQS via `/health/ready`.
+   - **Auditoria Visual do Ledger:** Inspeção em tempo real da trilha imutável do ledger append-only (direção de débito/crédito, progressão de `walletVersion`, `balanceBefore` e `balanceAfter`).
+   - **4 Cenários Guiados em 1-Clique:**
+     - ⚡ **1. Happy Path:** Abre uma carteira (R$ 100,00) e executa uma aposta (`BET`) de R$ 25,00 com sucesso (`HTTP 201`).
+     - 🛡️ **2. Defesa Saldo Negativo:** Tenta debitar R$ 500,00 com saldo insuficiente, comprovando a blindagem contra saldo negativo e o retorno de negócio `INSUFFICIENT_FUNDS` (`HTTP 422`).
+     - 🔁 **3. Idempotência Persistente:** Reenvia a transação idêntica com o mesmo payload e `Idempotency-Key`, demonstrando o replay consistente com `idempotentReplay: true` (`HTTP 200`) sem duplo débito.
+     - ⚖️ **4. Auditoria Contábil:** Dispara a reconciliação formal (`POST /wallets/:walletId/reconciliation`) validando a integridade estrita da cadeia e do somatório (`chainIntact: true`, `versionConsistent: true`).
+   - **Operação Manual Flexível:** Formulário para submeter qualquer tipo de operação (`BET`, `WIN`, `LOSS`, `REFUND`, `ROLLBACK`), customizar valores em BRL e testar replays instantâneos.
+
+2. **Swagger UI do Contrato OpenAPI 3.1 ([`http://localhost:3000/docs`](http://localhost:3000/docs))**:
+   - Documentação interativa *spec-first* com schemas completos, parâmetros de header obrigatórios (`Idempotency-Key`, `X-Correlation-Id`), códigos de retorno detalhados e botão *Try it out*.
+   - A especificação bruta pode ser consumida programaticamente em [`http://localhost:3000/docs/openapi.json`](http://localhost:3000/docs/openapi.json).
+
 ### Rodando em 3 instâncias concorrentes
 
 Todas as instâncias da aplicação são stateless e idênticas (HTTP + consumidor SQS + workers). A coordenação distribuída é assegurada no PostgreSQL:
