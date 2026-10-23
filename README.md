@@ -7,7 +7,10 @@ mensagens **fora de ordem** e concorrência real em **≥ 3 instâncias**.
 
 Stack: **Bun** (1.4.3) · **NestJS** · **PostgreSQL 16** · **AWS SQS** (LocalStack) · **MikroORM** (7.x).
 
-Documentação arquitetural detalhada: [`ARCHITECTURE.md`](ARCHITECTURE.md) e registros formais em [`docs/adr/`](docs/adr/).
+Documentação arquitetural detalhada: [`ARCHITECTURE.md`](ARCHITECTURE.md) e registros formais em [`docs/adr/`](docs/adr/).  
+Contrato da API: [`docs/api/openapi.yaml`](docs/api/openapi.yaml) servido interativamente em `/docs` (Swagger UI) e `/docs/openapi.json`.  
+Console Operacional Autoral: laboratório interativo com trilha em tempo real do ledger contábil em `/console`.  
+Contrato de mensageria assíncrona: [`docs/api/messaging.md`](docs/api/messaging.md).
 
 ---
 
@@ -99,11 +102,13 @@ O sistema conta com três níveis de testes automatizados com cobertura rigorosa
 
 | Suíte | Comando | Escopo e foco |
 |---|---|---|
-| **Unitários** | `bun run test:unit` | Domínio puro e regras contábeis em memória (270+ testes sem I/O em < 2s). |
+| **Unitários** | `bun run test:unit` | Domínio puro e regras contábeis em memória (280 testes sem I/O em < 2s). |
+| **Propriedades (PBT)** | `bun run test:property` | Testes baseados em propriedades com `fast-check` (4.100+ asserções matemáticas de precisão monetária, comutatividade e invariantes de saldo). |
 | **Integração** | `bun run test:integration` | PostgreSQL e SQS/LocalStack reais; aplica migrations e testa endpoints, concorrência no banco e filas. |
 | **Concorrência & Falhas (§13)** | `bun run test:concurrency` | **Cobre os 8 cenários de concorrência e resiliência exigidos no desafio** rodando contra 3 processos de aplicação reais. |
 | **Carga** | `bun run test:load` | Bateria de estresse com 64 clientes concorrentes (uniforme vs. hot wallet). |
 | **Completo** | `bun run test:all` | Executa unidade → integração → concorrência em sequência determinística. |
+| **Verificação Unificada** | `bun run check` | Pipeline completo (linter, types, regras monetárias, testes, promtool, docker, migrações, concorrência e build). Suporta `--quick`. |
 
 > **Nota sobre integração e readiness:** A suíte `test/integration/http-health.test.ts` pausa temporariamente os contêineres `postgres` e `localstack` via `docker compose pause` para validar a resposta `503` do probe de readiness e os retoma ao final. Não execute comandos paralelos contra a infraestrutura durante essa execução.
 
@@ -143,6 +148,9 @@ Medição executada com 3 instâncias da aplicação e 64 clientes concorrentes 
 | `GET /providers/:providerId/wagering/transactions/:externalTransactionId` | Consulta transação por id externo do provedor |
 | `GET /health/live` · `GET /health/ready` | Liveness · readiness (PostgreSQL e SQS) |
 | `GET /metrics` | Métricas Prometheus |
+| `GET /docs` | Documentação interativa Swagger UI do contrato OpenAPI 3.1 |
+| `GET /docs/openapi.json` | Especificação OpenAPI 3.1 em formato JSON |
+| `GET /console` | Console Operacional Autoral com auditoria contábil e cenários guiados em 1 clique |
 
 Valores monetários são sempre trafegados como `{ "amount": "25.00", "currency": "BRL" }` (string decimal com 2 casas). Valores com tipo numérico `number` ou campos não mapeados são rejeitados com `400 Bad Request`.
 
@@ -169,6 +177,7 @@ Respostas de erro seguem o formato `{ "code", "message", "violations"?, "correla
 - **Logs Estruturados (Pino):** Saída JSON padronizada com `correlationId`, `messageId`, `transactionId`, `walletId`, `providerId`. Nenhum payload financeiro sensível é exposto em logs.
 - **Métricas Prometheus (`/metrics`):** Contadores e histogramas para transações por status, replays e conflitos de idempotência, duplicatas de inbox, retries e DLQ do SQS, tempo de espera de lock, latência de processamento, `outbox_lag_seconds` e indicadores de divergência contábil (`wallet_reconciliation_divergences_total`).
 - **Health Checks:** `/health/live` (saúde do processo) e `/health/ready` (validação ativa de conectividade com PostgreSQL e SQS com timeout de 2s).
+- **Alertas Prometheus & Runbook Operacional:** 11 regras formais de alerta em [`docker/observability/alerts.yml`](docker/observability/alerts.yml) com testes automatizados via `promtool` em [`docker/observability/alerts.test.yml`](docker/observability/alerts.test.yml), cobrindo integridade contábil, latência p99, contenção de locks de wallet e lag de outbox. Cada alerta possui guia diagnóstico e mitigação no [Runbook de Alertas](docs/runbooks/alerts.md).
 - **Auditoria Contábil Contínua:** Além do endpoint manual, um worker executa reconciliação periódica de todas as carteiras via transação `REPEATABLE READ` curta em batches com advisory lock no PostgreSQL.
 
 ---
@@ -181,6 +190,8 @@ Respostas de erro seguem o formato `{ "code", "message", "violations"?, "correla
 | `bun run typecheck` | Checagem de tipos TypeScript estrita (`tsc --noEmit`) |
 | `bun run lint` | Validação de estilo e qualidade de código com ESLint |
 | `bun run check:money` | Scanner que proíbe ponto flutuante em arquivos de domínio e aplicação |
+| `bun run test:property` | Executa a suíte de testes baseados em propriedades com `fast-check` |
+| `bun run check` / `check --quick` | Executa a verificação unificada de sanidade local (completa ou rápida) |
 | `bun run migration:up` / `migration:down` | Executa migrations pendentes / reverte a última (papel `wagering_owner`) |
 | `bun run migration:reset` / `migration:status` | Reverte todas as migrations / exibe o status de execução |
 | `bun run infra:up` / `infra:down` | Sobe / derruba a infraestrutura local em contêineres |
