@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Jungle Wagering Console — Operational Workbench</title>
+  <style>
+    :root {
+      --bg: #090e10;
+      --card: #11191c;
+      --card-hover: #162226;
+      --border: #202e33;
+      --text: #f0f6f4;
+      --muted: #8b9e97;
+      --emerald: #10b981;
+      --emerald-glow: rgba(16, 185, 129, 0.2);
+      --amber: #f59e0b;
+      --red: #ef4444;
+      --cyan: #06b6d4;
+      --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+      --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font-family: var(--font-sans); line-height: 1.5; padding: 24px; }
+    .container { max-width: 1200px; margin: 0 auto; }
+    header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
+    .logo { display: flex; align-items: center; gap: 12px; font-weight: 700; font-size: 20px; color: var(--text); }
+    .logo span { color: var(--emerald); }
+    .status-badge { display: flex; align-items: center; gap: 8px; font-size: 13px; font-family: var(--font-mono); background: var(--card); border: 1px solid var(--border); padding: 6px 14px; border-radius: 999px; }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #6b7280; }
+    .status-dot.online { background: var(--emerald); box-shadow: 0 0 10px var(--emerald); }
+    .status-dot.offline { background: var(--red); box-shadow: 0 0 10px var(--red); }
+    
+    .scenarios { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 12px; margin-bottom: 24px; }
+    .scenario-btn { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 14px; text-align: left; cursor: pointer; transition: all .2s; }
+    .scenario-btn:hover { background: var(--card-hover); border-color: var(--emerald); transform: translateY(-1px); }
+    .scenario-btn strong { display: block; font-size: 14px; margin-bottom: 4px; color: var(--emerald); }
+    .scenario-btn small { font-size: 12px; color: var(--muted); }
+
+    .main-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+    @media (max-width: 900px) { .main-grid { grid-template-columns: 1fr; } }
+    
+    .panel { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 20px; }
+    .panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+    .panel-title { font-size: 16px; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 8px; }
+    
+    .wallet-card { background: #0c1316; border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 20px; }
+    .wallet-balance { font-size: 32px; font-weight: 700; color: var(--emerald); font-family: var(--font-mono); margin: 6px 0; }
+    .wallet-meta { display: flex; gap: 16px; font-size: 12px; color: var(--muted); font-family: var(--font-mono); }
+
+    label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: .05em; }
+    input, select { width: 100%; background: #090e10; border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: var(--text); font-size: 14px; font-family: var(--font-mono); margin-bottom: 12px; }
+    input:focus, select:focus { outline: none; border-color: var(--emerald); }
+    .btn-row { display: flex; gap: 10px; margin-top: 8px; }
+    button.action-btn { flex: 1; background: var(--emerald); color: #000; border: none; font-weight: 600; border-radius: 8px; padding: 12px; cursor: pointer; transition: opacity .2s; }
+    button.action-btn:hover { opacity: .9; }
+    button.secondary-btn { flex: 1; background: #1c272b; color: var(--text); border: 1px solid var(--border); font-weight: 600; border-radius: 8px; padding: 12px; cursor: pointer; }
+    button.secondary-btn:hover { background: #243237; }
+
+    .ledger-list { max-height: 480px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+    .ledger-item { background: #0c1316; border: 1px solid var(--border); border-radius: 8px; padding: 12px; font-family: var(--font-mono); font-size: 12px; }
+    .ledger-header { display: flex; justify-content: space-between; margin-bottom: 6px; }
+    .badge-debit { color: var(--red); font-weight: 700; }
+    .badge-credit { color: var(--emerald); font-weight: 700; }
+    .badge-replay { background: var(--amber); color: #000; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 700; }
+    
+    pre.response-box { background: #0c1316; border: 1px solid var(--border); border-radius: 8px; padding: 12px; font-family: var(--font-mono); font-size: 12px; color: #a7f3d0; max-height: 180px; overflow-y: auto; margin-top: 16px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="logo">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        Jungle <span>Wagering Console</span>
+      </div>
+      <div class="status-badge">
+        <div id="healthDot" class="status-dot"></div>
+        <span id="healthText">Checando API...</span>
+      </div>
+    </header>
+
+    <!-- Cenários Guiados em 1-Clique -->
+    <div class="scenarios">
+      <div class="scenario-btn" onclick="runScenario('happy')">
+        <strong>⚡ 1. Happy Path</strong>
+        <small>Abre wallet (R$ 100) e executa aposta de R$ 25 com sucesso.</small>
+      </div>
+      <div class="scenario-btn" onclick="runScenario('overdraw')">
+        <strong>🛡️ 2. Defesa Saldo Negativo</strong>
+        <small>Tenta debitar R$ 500 com saldo insuficiente (INSUFFICIENT_FUNDS).</small>
+      </div>
+      <div class="scenario-btn" onclick="runScenario('idempotency')">
+        <strong>🔁 3. Idempotência Persistente</strong>
+        <small>Reenvia o mesmo payload e chave, obtendo replay sem duplo débito.</small>
+      </div>
+      <div class="scenario-btn" onclick="runScenario('reconcile')">
+        <strong>⚖️ 4. Auditoria Contábil</strong>
+        <small>Audita a carteira e valida o somatório imutável do ledger contábil.</small>
+      </div>
+    </div>
+
+    <div class="main-grid">
+      <!-- Painel Esquerdo: Wallet e Ações Manuais -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">Carteira Selecionada</div>
+          <button class="secondary-btn" style="padding: 4px 10px; font-size: 12px;" onclick="openNewWallet()">Nova Wallet</button>
+        </div>
+
+        <div class="wallet-card">
+          <div style="font-size: 11px; color: var(--muted); text-transform: uppercase;">Saldo Disponível</div>
+          <div id="walletBalance" class="wallet-balance">R$ 0,00</div>
+          <div class="wallet-meta">
+            <div>ID: <span id="walletId">—</span></div>
+            <div>Player: <span id="playerId">—</span></div>
+            <div>Versão: <span id="walletVersion">0</span></div>
+          </div>
+        </div>
+
+        <form id="txForm" onsubmit="submitTransaction(event)">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+            <div>
+              <label>Operação</label>
+              <select id="txKind">
+                <option value="BET">BET (Débito)</option>
+                <option value="WIN">WIN (Crédito)</option>
+                <option value="LOSS">LOSS (Informativo)</option>
+                <option value="REFUND">REFUND (Reversão)</option>
+                <option value="ROLLBACK">ROLLBACK (Estorno)</option>
+              </select>
+            </div>
+            <div>
+              <label>Valor (BRL)</label>
+              <input type="text" id="txAmount" value="25.00" placeholder="25.00" />
+            </div>
+          </div>
+          <label>Idempotency-Key</label>
+          <input type="text" id="txIdempotencyKey" placeholder="Deixe em branco para gerar aleatória" />
+          
+          <div class="btn-row">
+            <button type="submit" class="action-btn">Executar Transação</button>
+            <button type="button" class="secondary-btn" onclick="replayLastTransaction()">Reenviar Idêntica</button>
+          </div>
+        </form>
+
+        <div class="panel-header" style="margin-top: 20px; margin-bottom: 8px;">
+          <div class="panel-title" style="font-size: 13px;">Resposta HTTP Recente</div>
+          <span id="responseStatus" class="status-badge" style="font-size: 11px; padding: 2px 8px;">—</span>
+        </div>
+        <pre id="responseOutput" class="response-box">Aguardando execução...</pre>
+      </div>
+
+      <!-- Painel Direito: Trilha do Ledger em Tempo Real -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+            Auditoria do Ledger Append-Only
+          </div>
+          <span id="ledgerCountBadge" class="status-badge" style="font-size: 11px; padding: 2px 8px;">0 lançamentos</span>
+        </div>
+        <div id="ledgerContainer" class="ledger-list">
+          <div style="color: var(--muted); font-size: 13px; text-align: center; padding: 40px 0;">
+            Nenhuma carteira selecionada. Execute um cenário para auditar.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentWallet = null;
+    let lastRequest = null;
+
+    async function checkHealth() {
+      try {
+        const res = await fetch('/health/ready');
+        const dot = document.getElementById('healthDot');
+        const text = document.getElementById('healthText');
+        if (res.ok) {
+          dot.className = 'status-dot online';
+          text.textContent = 'API Online · PostgreSQL & SQS Prontos';
+        } else {
+          dot.className = 'status-dot offline';
+          text.textContent = 'Dependência Indisponível (503)';
+        }
+      } catch {
+        document.getElementById('healthDot').className = 'status-dot offline';
+        document.getElementById('healthText').textContent = 'API Offline';
+      }
+    }
+    setInterval(checkHealth, 5000);
+    checkHealth();
+
+    async function openNewWallet(initialAmount = "100.00") {
+      const playerId = 'player-' + crypto.randomUUID().slice(0, 8);
+      const res = await fetch('/wallets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playerId, initialBalance: { amount: initialAmount, currency: 'BRL' } })
+      });
+      const data = await res.json();
+      currentWallet = data;
+      renderWallet();
+      await refreshLedger();
+      return data;
+    }
+
+    function renderWallet() {
+      if (!currentWallet) return;
+      document.getElementById('walletBalance').textContent = 'R$ ' + currentWallet.balance.amount;
+      document.getElementById('walletId').textContent = currentWallet.id.slice(0, 8) + '...';
+      document.getElementById('playerId').textContent = currentWallet.playerId;
+      document.getElementById('walletVersion').textContent = 'v' + currentWallet.version;
+    }
+
+    async function refreshLedger() {
+      if (!currentWallet) return;
+      const res = await fetch('/wallets/' + currentWallet.id + '/ledger');
+      const data = await res.json();
+      const container = document.getElementById('ledgerContainer');
+      document.getElementById('ledgerCountBadge').textContent = (data.items?.length || 0) + ' lançamentos';
+      
+      if (!data.items || data.items.length === 0) {
+        container.innerHTML = '<div style="color: var(--muted); font-size: 13px; text-align: center; padding: 20px;">Ledger vazio.</div>';
+        return;
+      }
+
+      container.innerHTML = data.items.map(entry => `
+        <div class="ledger-item">
+          <div class="ledger-header">
+            <span>Versão <strong>#${entry.walletVersion}</strong></span>
+            <span class="${entry.direction === 'CREDIT' ? 'badge-credit' : 'badge-debit'}">${entry.direction} R$ ${entry.money.amount}</span>
+          </div>
+          <div style="color: var(--muted); font-size: 11px;">
+            Saldo: R$ ${entry.balanceBefore.amount} → R$ ${entry.balanceAfter.amount}
+          </div>
+          <div style="color: #6b7280; font-size: 10px; margin-top: 4px;">
+            Tx: ${entry.transactionId} · ${new Date(entry.createdAt).toLocaleTimeString()}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    async function submitTransaction(e, customPayload = null, customKey = null) {
+      if (e) e.preventDefault();
+      if (!currentWallet) await openNewWallet("100.00");
+
+      const kind = customPayload ? customPayload.kind : document.getElementById('txKind').value;
+      const amount = customPayload ? customPayload.money.amount : document.getElementById('txAmount').value;
+      const key = customKey || document.getElementById('txIdempotencyKey').value.trim() || 'idem-' + crypto.randomUUID();
+
+      const payload = customPayload || {
+        providerId: 'provider-studio',
+        externalTransactionId: 'tx-' + crypto.randomUUID(),
+        playerId: currentWallet.playerId,
+        walletId: currentWallet.id,
+        roundId: 'round-1',
+        gameId: 'fortune-chimp',
+        kind: kind,
+        money: { amount: amount, currency: 'BRL' }
+      };
+
+      lastRequest = { payload, key };
+      document.getElementById('txIdempotencyKey').value = key;
+
+      const res = await fetch('/wagering/transactions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': key },
+        body: JSON.stringify(payload)
+      });
+
+      const json = await res.json();
+      document.getElementById('responseStatus').textContent = 'HTTP ' + res.status;
+      document.getElementById('responseOutput').textContent = JSON.stringify(json, null, 2);
+
+      // Atualiza wallet se houve saldo
+      if (json.balance) {
+        currentWallet.balance = json.balance;
+      }
+      const walletRes = await fetch('/wallets/' + currentWallet.id);
+      if (walletRes.ok) currentWallet = await walletRes.json();
+      renderWallet();
+      await refreshLedger();
+      return { status: res.status, data: json };
+    }
+
+    async function replayLastTransaction() {
+      if (!lastRequest) return alert('Nenhuma transação executada anteriormente.');
+      await submitTransaction(null, lastRequest.payload, lastRequest.key);
+    }
+
+    async function runScenario(type) {
+      if (type === 'happy') {
+        const w = await openNewWallet("100.00");
+        await submitTransaction(null, {
+          providerId: 'provider-studio',
+          externalTransactionId: 'tx-' + crypto.randomUUID(),
+          playerId: w.playerId,
+          walletId: w.id,
+          roundId: 'round-happy',
+          gameId: 'chimp-gold',
+          kind: 'BET',
+          money: { amount: '25.00', currency: 'BRL' }
+        });
+      } else if (type === 'overdraw') {
+        if (!currentWallet) await openNewWallet("100.00");
+        await submitTransaction(null, {
+          providerId: 'provider-studio',
+          externalTransactionId: 'tx-' + crypto.randomUUID(),
+          playerId: currentWallet.playerId,
+          walletId: currentWallet.id,
+          roundId: 'round-overdraw',
+          gameId: 'chimp-gold',
+          kind: 'BET',
+          money: { amount: '500.00', currency: 'BRL' }
+        });
+      } else if (type === 'idempotency') {
+        if (!lastRequest) {
+          await runScenario('happy');
+        }
+        await replayLastTransaction();
+      } else if (type === 'reconcile') {
+        if (!currentWallet) await openNewWallet("100.00");
+        const res = await fetch('/wallets/' + currentWallet.id + '/reconciliation', { method: 'POST' });
+        const json = await res.json();
+        document.getElementById('responseStatus').textContent = 'HTTP ' + res.status;
+        document.getElementById('responseOutput').textContent = JSON.stringify(json, null, 2);
+      }
+    }
+  </script>
+</body>
+</html>

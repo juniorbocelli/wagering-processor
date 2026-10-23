@@ -88,10 +88,9 @@ infrastructure (MikroORM, SQS, logs, métricas, auth adapters) ─┤──► a
 | [ADR-010](docs/adr/0010-multi-process-testing-and-fault-injection.md) | Testes multi-processo (3 instâncias reais, `SIGKILL`, reinício) e injeção de falhas por ambiente; cobre os 8 cenários do §13 | Aceita | Testes, Concorrência |
 | [ADR-011](docs/adr/0011-bounded-retention-inbox-outbox.md) | Retenção limitada de inbox (7 d) e outbox publicada (72 h) em lotes; pendentes nunca apagados | Aceita | Mensageria e falhas |
 | [ADR-012](docs/adr/0012-periodic-reconciliation-detect-not-correct.md) | Reconciliação periódica de todas as wallets em snapshots `REPEATABLE READ` curtos por lote, uma instância por vez (advisory lock); detecta e não corrige | Aceita | Correção financeira, Observabilidade |
-| [ADR-013](docs/adr/0013-spec-first-openapi-contract.md) | Contrato OpenAPI 3.1 *spec-first* com teste de paridade rotas × spec | **Proposta** | Documentação |
+| [ADR-013](docs/adr/0013-spec-first-openapi-contract.md) | Contrato OpenAPI 3.1 *spec-first* com teste de paridade rotas × spec | Aceita | Documentação |
 
-**ADR-013 (OpenAPI spec-first)** permanece **Proposta** — não foi entregue; o contrato HTTP
-está no `README.md` e coberto por testes de integração (ver §8).
+**ADR-013 (OpenAPI spec-first)** foi promovida a **Aceita** — entregue com contrato OpenAPI 3.1 em `docs/api/openapi.yaml`, Swagger UI em `/docs`, console operacional em `/console` e teste de paridade em `test/unit/openapi-contract.test.ts`.
 
 Template para novos registros: [`docs/adr/template.md`](docs/adr/template.md).
 ADRs aceitos não são editados no mérito; uma mudança de decisão gera um novo ADR que
@@ -231,8 +230,7 @@ Erros de contrato (não persistidos) usam `code` na resposta HTTP e no atributo
 - Risco de compatibilidade Bun × MikroORM mitigado por smoke test e fallback (ADR-005).
 - API sem autenticação/autorização e sem rate limiting (ADR-006).
 - Ledger de partida simples (double-entry é diferencial opcional, não adotado).
-- Contrato OpenAPI (ADR-013) não entregue: o contrato HTTP está documentado no `README.md`
-  e coberto por testes de integração; o ADR permanece **Proposta**.
+- Contrato OpenAPI (ADR-013) entregue e servido em `/docs` e `/docs/openapi.json`, com console operacional em `/console` e teste de paridade no CI.
 - Consultas (`GET`) leem fora de transação, sem lock: refletem o último commit.
 - Teste de carga em laço fechado, no mesmo host dos serviços e com uma execução por cenário:
   serve para comparar cenários e provar ausência de erros, não como medida de capacidade

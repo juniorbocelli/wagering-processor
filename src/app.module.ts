@@ -1,6 +1,8 @@
 import { DynamicModule, Module } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { PROVIDER_IDENTITY_PORT } from './application/ports/identity.ts';
+import { ConsoleController } from './interfaces/http/controllers/console.controller.ts';
+import { DocsController } from './interfaces/http/controllers/docs.controller.ts';
 import { HealthController } from './interfaces/http/controllers/health.controller.ts';
 import { WageringController } from './interfaces/http/controllers/wagering.controller.ts';
 import { WalletsController } from './interfaces/http/controllers/wallets.controller.ts';
@@ -19,7 +21,7 @@ export class AppModule {
   static register(deps: HttpDependencies): DynamicModule {
     return {
       module: AppModule,
-      controllers: [WalletsController, WageringController, HealthController],
+      controllers: [WalletsController, WageringController, HealthController, DocsController, ConsoleController],
       providers: [
         { provide: HTTP_DEPENDENCIES, useValue: deps },
         { provide: HTTP_LOGGER, useValue: deps.logger },

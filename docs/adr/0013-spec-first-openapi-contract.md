@@ -1,6 +1,6 @@
 # ADR-013 — Contrato OpenAPI escrito à mão e verificado contra as rotas
 
-- **Status:** Proposta (promovida a Aceita somente se implementada no Passo 5)
+- **Status:** Aceita
 - **Data:** 2026-10-20
 - **Relacionados:** ADR-003, ADR-006
 - **Edital:** §9, §14 (Documentação — 5 pts)
@@ -52,5 +52,4 @@ mesmo contrato, espalhada pelo código e sem garantia de bater com a validação
 
 ### Critério de promoção
 
-Esta ADR só passa a **Aceita** se o YAML e o teste de paridade forem entregues no Passo 5.
-Caso contrário, permanece **Proposta** e é listada como limitação no `ARCHITECTURE.md`.
+Promovida a **Aceita**: contrato OpenAPI 3.1 entregue em `docs/api/openapi.yaml`, servido em `/docs` (Swagger UI) e `/docs/openapi.json` via `DocsController`, console operacional autoral em `/console` via `ConsoleController` e teste de paridade unitário em `test/unit/openapi-contract.test.ts`.
