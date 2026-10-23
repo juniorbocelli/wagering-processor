@@ -149,7 +149,7 @@ export async function outboxEventIds(orm: MikroORM, walletIds: string[]): Promis
   return sql(
     orm,
     `SELECT id, aggregate_id, seq::text AS seq FROM outbox_messages
-      WHERE aggregate_id IN (${walletIds.map(() => '?').join(',')}) ORDER BY seq`,
+      WHERE aggregate_id IN (${walletIds.map(() => '?').join(',')}) ORDER BY outbox_messages.seq`,
     walletIds,
   );
 }

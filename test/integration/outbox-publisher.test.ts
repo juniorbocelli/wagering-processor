@@ -87,7 +87,7 @@ const outboxOf = (walletIds: string[]): Promise<OutboxRow[]> =>
   sql<OutboxRow>(
     app,
     `SELECT id, seq::text AS seq, aggregate_id, published_at FROM outbox_messages
-      WHERE aggregate_id IN (${walletIds.map(() => '?').join(',')}) ORDER BY seq`,
+      WHERE aggregate_id IN (${walletIds.map(() => '?').join(',')}) ORDER BY outbox_messages.seq`,
     walletIds,
   );
 
