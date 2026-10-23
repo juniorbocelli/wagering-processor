@@ -26,7 +26,8 @@
     "test:integration": "bun test test/integration",
     "test:concurrency": "bun test test/concurrency",
     "test:load": "bun test/load/run.ts",
-    "test:all": "bun run test:unit && bun run test:integration && bun run test:concurrency"
+    "test:all": "bun run test:unit && bun run test:integration && bun run test:concurrency",
+    "check": "bun scripts/check.ts"
   },
   "dependencies": {
     "@aws-sdk/client-sqs": "3",
